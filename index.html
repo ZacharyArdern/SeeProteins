@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SeeProteins</title>
+    <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0f0f1a;
+            color: #e0e0e0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        header {
+            padding: 10px 18px;
+            background: #161625;
+            border-bottom: 1px solid #2a2a4a;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-shrink: 0;
+        }
+        header h1 { font-size: 1.15rem; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
+        header h1 span { color: #7c6fff; }
+        .loading { display: none; align-items: center; gap: 8px; color: #7c6fff; font-size: 0.8rem; }
+        .loading.visible { display: flex; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner { width: 13px; height: 13px; border: 2px solid #3a3a5a; border-top-color: #7c6fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+
+        .main { display: flex; flex: 1; overflow: hidden; }
+
+        /* ── Sidebar ── */
+        .sidebar {
+            width: 252px;
+            flex-shrink: 0;
+            background: #161625;
+            border-right: 1px solid #2a2a4a;
+            padding: 12px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .drop-zone {
+            border: 2px dashed #2e2e50;
+            border-radius: 9px;
+            padding: 12px 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            display: block;
+        }
+        .drop-zone input[type="file"] { display: none; }
+        .drop-zone:hover, .drop-zone.dragover { background: rgba(124,111,255,0.05); }
+        .drop-zone.loaded-a { border-color: #4a90d9; border-style: solid; }
+        .drop-zone.loaded-b { border-color: #e8854a; border-style: solid; }
+        .dz-label { font-size: 0.63rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 5px; }
+        .dz-label-a { color: #4a90d9; }
+        .dz-label-b { color: #e8854a; }
+        .dz-icon { font-size: 1.3rem; margin-bottom: 3px; line-height: 1; }
+        .dz-hint { font-size: 0.73rem; color: #6060a0; }
+        .dz-filename { font-size: 0.7rem; color: #a0a0c0; margin-top: 3px; word-break: break-all; }
+
+        .btn {
+            width: 100%;
+            padding: 9px;
+            border: none;
+            border-radius: 7px;
+            background: #7c6fff;
+            color: #fff;
+            font-size: 0.86rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn:hover:not(:disabled) { background: #6a5ef0; }
+        .btn:disabled { background: #252540; color: #505070; cursor: not-allowed; }
+        .btn-flex { background: #3a6a4a; }
+        .btn-flex:hover:not(:disabled) { background: #2e5a3e; }
+
+        /* ── Display options ── */
+        .opts-section {
+            background: #1b1b30;
+            border-radius: 8px;
+            padding: 9px 11px;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+        .opts-title {
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #5050a0;
+            margin-bottom: 1px;
+        }
+        .opt-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+        .opt-label { font-size: 0.73rem; color: #8080a0; }
+        .opt-select {
+            background: #252545;
+            color: #c0c0e0;
+            border: 1px solid #3a3a6a;
+            border-radius: 5px;
+            padding: 3px 5px;
+            font-size: 0.72rem;
+            cursor: pointer;
+            outline: none;
+        }
+        .opt-select:focus { border-color: #7c6fff; }
+
+        /* ── Stats ── */
+        .stats { background: #1b1b30; border-radius: 9px; padding: 11px; display: none; flex-direction: column; gap: 7px; }
+        .stats.visible { display: flex; }
+        .stats-title { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: #6060a0; margin-bottom: 1px; }
+        .stat-row { display: flex; justify-content: space-between; align-items: baseline; }
+        .stat-label { font-size: 0.73rem; color: #8080a0; }
+        .stat-value { font-size: 0.98rem; font-weight: 700; color: #fff; }
+        .tm-bar { height: 4px; background: #252545; border-radius: 3px; overflow: hidden; }
+        .tm-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #e85555 0%, #e8c854 50%, #54e868 100%); width: 0%; transition: width 0.6s cubic-bezier(0.4,0,0.2,1); }
+        .legend { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 2px; }
+        .legend-item { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: #8080a0; }
+        .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+        /* ── Three-panel content area ── */
+        .content-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+        .panels {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 2px;
+            background: #1a1a2e;
+            overflow: hidden;
+        }
+
+        .panel {
+            position: relative;
+            background: #0c0c16;
+            overflow: hidden;
+            cursor: pointer;
+            transition: box-shadow 0.15s;
+        }
+        .panel-overlay { grid-row: 1 / 3; }
+
+        .panel-inner { width: 100%; height: 100%; }
+
+        .panel-label {
+            position: absolute;
+            top: 7px;
+            left: 9px;
+            font-size: 0.62rem;
+            font-weight: 600;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            color: #35354a;
+            pointer-events: none;
+            z-index: 10;
+            user-select: none;
+            transition: color 0.15s;
+        }
+        .panel-hint {
+            position: absolute;
+            bottom: 7px;
+            right: 9px;
+            font-size: 0.58rem;
+            color: #28283a;
+            pointer-events: none;
+            z-index: 10;
+            user-select: none;
+        }
+        .panel.selected { box-shadow: inset 0 0 0 2px #7c6fff; }
+        .panel.selected .panel-label { color: #7c6fff; }
+
+        .empty-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #252538;
+            gap: 10px;
+            pointer-events: none;
+        }
+        .empty-overlay svg { width: 56px; opacity: 0.4; }
+        .empty-overlay p { font-size: 0.78rem; }
+
+        /* ── Sequence alignment panel ── */
+        .aln-panel {
+            height: 95px;
+            background: #161625;
+            border-top: 1px solid #1e1e38;
+            padding: 7px 14px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            gap: 1px;
+            flex-shrink: 0;
+        }
+        .aln-panel.visible { display: flex; }
+        .aln-row { display: flex; align-items: center; gap: 7px; font-family: 'Courier New', monospace; font-size: 0.76rem; white-space: nowrap; }
+        .aln-name { width: 68px; flex-shrink: 0; font-size: 0.64rem; font-family: system-ui; overflow: hidden; text-overflow: ellipsis; }
+        .aln-name-a { color: #4a90d9; }
+        .aln-name-b { color: #e8854a; }
+        .aln-name-m { color: #3a3a5a; }
+        .aln-seq span { display: inline-block; }
+        .res-match    { color: #54c868; }
+        .res-mismatch { color: #e06060; }
+        .res-gap      { color: #222238; }
+        .match-bar    { color: #3a6a3a; }
+
+        /* ── Status bar ── */
+        .statusbar { padding: 3px 14px; font-size: 0.68rem; color: #3a3a58; background: #0c0c16; flex-shrink: 0; border-top: 1px solid #18182a; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>See<span>Proteins</span></h1>
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <span id="loading-msg">Running TM-align…</span>
+    </div>
+</header>
+
+<div class="main">
+    <div class="sidebar">
+
+        <label class="drop-zone" id="zone-a" for="file-a">
+            <input type="file" accept=".pdb,.cif,.mmcif" id="file-a">
+            <div class="dz-label dz-label-a">Protein A</div>
+            <div class="dz-icon">⬡</div>
+            <div class="dz-hint" id="hint-a">Drop PDB / CIF or click</div>
+            <div class="dz-filename" id="name-a"></div>
+        </label>
+
+        <label class="drop-zone" id="zone-b" for="file-b">
+            <input type="file" accept=".pdb,.cif,.mmcif" id="file-b">
+            <div class="dz-label dz-label-b">Protein B</div>
+            <div class="dz-icon">⬡</div>
+            <div class="dz-hint" id="hint-b">Drop PDB / CIF or click</div>
+            <div class="dz-filename" id="name-b"></div>
+        </label>
+
+        <button class="btn" id="align-btn" disabled>Align Structures</button>
+        <button class="btn btn-flex" id="flex-btn" disabled>Flexible Align</button>
+
+        <div class="opts-section">
+            <div class="opts-title">Display</div>
+            <div class="opt-row">
+                <span class="opt-label">Colors</span>
+                <select class="opt-select" id="color-select">
+                    <option value="solid">Solid</option>
+                    <option value="segment">By segment</option>
+                </select>
+            </div>
+            <div class="opt-row">
+                <span class="opt-label">Mutations</span>
+                <select class="opt-select" id="mut-select">
+                    <option value="sphere">Sphere (Cα)</option>
+                    <option value="none">Hidden</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="stats" id="stats">
+            <div class="stats-title">Rigid Alignment</div>
+            <div>
+                <div class="stat-row">
+                    <span class="stat-label">TM-score</span>
+                    <span class="stat-value" id="stat-tm">—</span>
+                </div>
+                <div class="tm-bar" style="margin-top:5px">
+                    <div class="tm-fill" id="tm-fill"></div>
+                </div>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">RMSD</span>
+                <span class="stat-value" id="stat-rmsd">—</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Aligned residues</span>
+                <span class="stat-value" id="stat-aln">—</span>
+            </div>
+            <div class="stat-row" id="mut-row" style="display:none">
+                <span class="stat-label">Mutations (B vs A)</span>
+                <span class="stat-value" id="stat-mut" style="color:#f5e642">—</span>
+            </div>
+            <div class="legend" id="legend-rigid">
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#4a90d9"></div>
+                    <span id="leg-a">Protein A</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#e8854a"></div>
+                    <span id="leg-b">Protein B</span>
+                </div>
+                <div class="legend-item" id="leg-mut-item" style="display:none">
+                    <div class="legend-dot" style="background:#f5e642"></div>
+                    <span>Mutations</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats" id="flex-stats">
+            <div class="stats-title">Flexible Alignment</div>
+            <div class="stat-row">
+                <span class="stat-label">RMSDh</span>
+                <span class="stat-value" id="stat-rmsdh">—</span>
+            </div>
+            <div class="tm-bar"><div class="tm-fill" id="rmsdh-bar"></div></div>
+            <div class="stat-row">
+                <span class="stat-label">Hinges detected</span>
+                <span class="stat-value" id="stat-hinges">—</span>
+            </div>
+            <div class="stat-row" id="hinge-pos-row" style="display:none">
+                <span class="stat-label">Hinge residue(s)</span>
+                <span class="stat-value" id="stat-hinge-pos" style="font-size:0.8rem">—</span>
+            </div>
+            <div class="legend" id="legend-flex" style="flex-wrap:wrap;gap:5px"></div>
+        </div>
+
+    </div><!-- /sidebar -->
+
+    <div class="content-wrap">
+        <div class="panels">
+
+            <!-- Overlay: large, spans both rows -->
+            <div class="panel panel-overlay" id="panel-overlay">
+                <div class="panel-label">Overlay</div>
+                <div class="panel-hint">click · ↑↓←→ to rotate</div>
+                <div class="panel-inner" id="viewer-overlay"></div>
+                <div class="empty-overlay" id="empty-overlay">
+                    <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="30" cy="30" r="12" stroke="currentColor" stroke-width="4"/>
+                        <circle cx="70" cy="30" r="12" stroke="currentColor" stroke-width="4"/>
+                        <circle cx="50" cy="70" r="12" stroke="currentColor" stroke-width="4"/>
+                        <line x1="42" y1="30" x2="58" y2="30" stroke="currentColor" stroke-width="4"/>
+                        <line x1="36" y1="40" x2="44" y2="60" stroke="currentColor" stroke-width="4"/>
+                        <line x1="64" y1="40" x2="56" y2="60" stroke="currentColor" stroke-width="4"/>
+                    </svg>
+                    <p>Load two PDB files to align and visualise</p>
+                </div>
+            </div>
+
+            <!-- Protein A: top right -->
+            <div class="panel" id="panel-a">
+                <div class="panel-label" style="color:#2a4a6a">Protein A</div>
+                <div class="panel-inner" id="viewer-a"></div>
+            </div>
+
+            <!-- Protein B: bottom right -->
+            <div class="panel" id="panel-b">
+                <div class="panel-label" style="color:#6a3a1a">Protein B</div>
+                <div class="panel-inner" id="viewer-b"></div>
+            </div>
+
+        </div><!-- /panels -->
+
+        <div class="aln-panel" id="aln-panel">
+            <div class="aln-row">
+                <div class="aln-name aln-name-a" id="aln-name-a">Query</div>
+                <div class="aln-seq" id="aln-seq-a"></div>
+            </div>
+            <div class="aln-row">
+                <div class="aln-name aln-name-m"></div>
+                <div class="aln-seq" id="aln-match"></div>
+            </div>
+            <div class="aln-row">
+                <div class="aln-name aln-name-b" id="aln-name-b">Target</div>
+                <div class="aln-seq" id="aln-seq-b"></div>
+            </div>
+        </div>
+
+    </div><!-- /content-wrap -->
+</div><!-- /main -->
+
+<div class="statusbar" id="statusbar">Load two PDB files to begin.</div>
+
+<script type="module">
+    import { tmalign, parse, parseMatrix } from './tmalign-loader.js';
+    import { runBICExact } from './bicexact-loader.js';
+    import { flexibleAlignPDB, parseCACoords } from './kabsch.js';
+
+    // ── CIF → PDB ──────────────────────────────────────────────────────────────
+    function cifToPDB(cifText) {
+        const div = document.createElement('div');
+        div.style.cssText = 'width:1px;height:1px;position:fixed;top:-9999px';
+        document.body.appendChild(div);
+        try {
+            const tmpViewer = $3Dmol.createViewer(div, {});
+            const model = tmpViewer.addModel(cifText, 'cif');
+            const atoms = model.selectedAtoms({});
+            const lines = atoms.map(a => {
+                const group   = a.hetflag ? 'HETATM' : 'ATOM  ';
+                const serial  = String(a.serial || 1).padStart(5);
+                const aname   = (a.atom || 'CA');
+                const nameFmt = aname.length >= 4 ? aname.substring(0,4) : (' ' + aname).padEnd(4);
+                const resn    = (a.resn || 'UNK').padEnd(3).substring(0, 3);
+                const chain   = (a.chain || 'A').substring(0, 1);
+                const resi    = String(a.resi || 1).padStart(4);
+                const x       = a.x.toFixed(3).padStart(8);
+                const y       = a.y.toFixed(3).padStart(8);
+                const z       = a.z.toFixed(3).padStart(8);
+                return `${group}${serial} ${nameFmt} ${resn} ${chain}${resi}    ${x}${y}${z}  1.00  0.00`;
+            });
+            return lines.join('\n') + '\nEND\n';
+        } finally {
+            document.body.removeChild(div);
+        }
+    }
+
+    function isCIF(filename) { return /\.(cif|mmcif)$/i.test(filename); }
+
+    // ── State ──────────────────────────────────────────────────────────────────
+    let pdbA = null, pdbB = null, pdbBtAligned = null;
+    let labelA = 'Protein A', labelB = 'Protein B';
+    let viewerA = null, viewerB = null, viewerOverlay = null;
+    let mutations    = null;   // {inA:[resNums], inB:[resNums]}
+    let currentSegs  = null;   // segments from flex align
+    let colorMode    = 'solid';  // 'solid' | 'segment'
+    let mutDisplay   = 'sphere'; // 'sphere' | 'none'
+    let activePanel  = null;   // selected panel DOM element
+    let activeViewer = null;   // selected 3Dmol viewer
+
+    const SEG_COLORS = ['#e8854a','#54c898','#e8c84a','#c854e8','#54c8e8','#e85478'];
+    const MUT_COLOR  = '#f5e642';
+
+    const $ = id => document.getElementById(id);
+    const alignBtn    = $('align-btn');
+    const flexBtn     = $('flex-btn');
+    const loading     = $('loading');
+    const loadingMsg  = $('loading-msg');
+    const stats       = $('stats');
+    const alnPanel    = $('aln-panel');
+    const statusbar   = $('statusbar');
+    const colorSelect = $('color-select');
+    const mutSelect   = $('mut-select');
+
+    // ── Viewer initialisation ──────────────────────────────────────────────────
+    function initViewers() {
+        if (viewerA) return;
+        const bg = { backgroundColor: '#0c0c16' };
+        viewerA       = $3Dmol.createViewer($('viewer-a'),       bg);
+        viewerB       = $3Dmol.createViewer($('viewer-b'),       bg);
+        viewerOverlay = $3Dmol.createViewer($('viewer-overlay'), bg);
+    }
+
+    // ── Rendering ─────────────────────────────────────────────────────────────
+    function addMutStyle(vwr, modelIdx, resNums) {
+        if (!resNums?.length) return;
+        if (mutDisplay === 'sphere') {
+            vwr.addStyle(
+                { model: modelIdx, resi: resNums, atom: 'CA' },
+                { sphere: { color: MUT_COLOR, radius: 0.8, opacity: 0.95 } }
+            );
+        }
+    }
+
+    function renderToViewer(vwr, aData, bData) {
+        vwr.clear();
+        let mi = 0;
+        if (aData) {
+            vwr.addModel(aData, 'pdb');
+            vwr.setStyle({ model: mi }, { cartoon: { color: '#4a90d9', opacity: 0.9 } });
+            mi++;
+        }
+        if (bData) {
+            vwr.addModel(bData, 'pdb');
+            const segs = (colorMode === 'segment' && currentSegs) ? currentSegs : null;
+            if (segs) {
+                segs.forEach((seg, si) => vwr.setStyle(
+                    { model: mi, resi: `${seg.minRes}-${seg.maxRes}` },
+                    { cartoon: { color: SEG_COLORS[si % SEG_COLORS.length], opacity: 0.95 } }
+                ));
+            } else {
+                vwr.setStyle({ model: mi }, { cartoon: { color: '#e8854a', opacity: 0.95 } });
+            }
+            if (mutDisplay !== 'none') addMutStyle(vwr, mi, mutations?.inB);
+        }
+        vwr.zoomTo();
+        vwr.render();
+    }
+
+    function showStructures() {
+        initViewers();
+        $('empty-overlay').style.display = 'none';
+        const bData = pdbBtAligned || pdbB;
+        renderToViewer(viewerA,       pdbA, null);
+        renderToViewer(viewerB,       null, bData);
+        renderToViewer(viewerOverlay, pdbA, bData);
+    }
+
+    // ── Panel selection + arrow-key rotation ──────────────────────────────────
+    function selectPanel(panelEl, vwr) {
+        if (activePanel) activePanel.classList.remove('selected');
+        activePanel  = panelEl;
+        activeViewer = vwr;
+        panelEl.classList.add('selected');
+    }
+
+    $('panel-overlay').addEventListener('click', () => { initViewers(); selectPanel($('panel-overlay'), viewerOverlay); });
+    $('panel-a').addEventListener('click',       () => { initViewers(); selectPanel($('panel-a'),       viewerA); });
+    $('panel-b').addEventListener('click',       () => { initViewers(); selectPanel($('panel-b'),       viewerB); });
+
+    document.addEventListener('keydown', e => {
+        if (!activeViewer) return;
+        if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) return;
+        e.preventDefault();
+        const deg = 5;
+        if (e.key === 'ArrowLeft')  activeViewer.rotate( deg, 'y');
+        if (e.key === 'ArrowRight') activeViewer.rotate(-deg, 'y');
+        if (e.key === 'ArrowUp')    activeViewer.rotate( deg, 'x');
+        if (e.key === 'ArrowDown')  activeViewer.rotate(-deg, 'x');
+        activeViewer.render();
+    });
+
+    // ── Display option dropdowns ───────────────────────────────────────────────
+    colorSelect.addEventListener('change', () => { colorMode = colorSelect.value; showStructures(); });
+    mutSelect.addEventListener('change',   () => { mutDisplay = mutSelect.value;  showStructures(); });
+
+    // ── Drag/drop + file input ─────────────────────────────────────────────────
+    document.addEventListener('dragover', e => e.preventDefault());
+    document.addEventListener('drop',     e => e.preventDefault());
+
+    function setupZone(zoneId, fileId, hintId, nameId, suffix, onLoad) {
+        const zone = $(zoneId), fi = $(fileId);
+        zone.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); zone.classList.add('dragover'); });
+        zone.addEventListener('dragleave', e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove('dragover'); });
+        zone.addEventListener('drop', e => {
+            e.preventDefault(); e.stopPropagation(); zone.classList.remove('dragover');
+            const f = e.dataTransfer.files[0];
+            if (f) readFile(f, hintId, nameId, zone, suffix, onLoad);
+        });
+        fi.addEventListener('change', () => { if (fi.files[0]) readFile(fi.files[0], hintId, nameId, zone, suffix, onLoad); });
+    }
+
+    function readFile(file, hintId, nameId, zone, suffix, onLoad) {
+        const reader = new FileReader();
+        reader.onload = e => {
+            let text = e.target.result;
+            if (isCIF(file.name)) text = cifToPDB(text);
+            onLoad(text, file.name.replace(/\.(pdb|cif|mmcif)$/i, ''));
+            $(hintId).style.display = 'none';
+            $(nameId).textContent = file.name;
+            zone.classList.add('loaded-' + suffix);
+        };
+        reader.readAsText(file);
+    }
+
+    setupZone('zone-a', 'file-a', 'hint-a', 'name-a', 'a', (text, name) => {
+        pdbA = text; labelA = name; showStructures(); checkReady();
+    });
+    setupZone('zone-b', 'file-b', 'hint-b', 'name-b', 'b', (text, name) => {
+        pdbB = text; labelB = name; showStructures(); checkReady();
+    });
+
+    function checkReady() {
+        alignBtn.disabled = !(pdbA && pdbB);
+        if (pdbA && pdbB) statusbar.textContent = 'Both structures loaded. Click "Align Structures".';
+    }
+
+    // ── Mutation detection ────────────────────────────────────────────────────
+    function findMutations(qAln, tAln, resNumsA, resNumsB) {
+        const inA = [], inB = [];
+        let ai = 0, bi = 0;
+        for (let i = 0; i < qAln.length; i++) {
+            const qa = qAln[i], ta = tAln[i];
+            const gapA = qa === '-', gapB = ta === '-';
+            if (!gapA && !gapB && qa !== ta) {
+                if (ai < resNumsA.length) inA.push(resNumsA[ai]);
+                if (bi < resNumsB.length) inB.push(resNumsB[bi]);
+            }
+            if (!gapA) ai++;
+            if (!gapB) bi++;
+        }
+        return { inA, inB };
+    }
+
+    // ── Sequence alignment rendering ──────────────────────────────────────────
+    function renderAlignment(qAln, tAln) {
+        $('aln-name-a').textContent = labelA;
+        $('aln-name-b').textContent = labelB;
+        const seqA = $('aln-seq-a'), seqB = $('aln-seq-b'), matchEl = $('aln-match');
+        seqA.innerHTML = seqB.innerHTML = matchEl.innerHTML = '';
+        for (let i = 0; i < qAln.length; i++) {
+            const qa = qAln[i], ta = tAln[i];
+            const gap = qa === '-' || ta === '-';
+            const match = !gap && qa === ta;
+            const cls = gap ? 'res-gap' : match ? 'res-match' : 'res-mismatch';
+            const mk = (ch, c) => { const s = document.createElement('span'); s.textContent = ch; s.className = c; return s; };
+            seqA.appendChild(mk(qa, cls));
+            seqB.appendChild(mk(ta, cls));
+            matchEl.appendChild(mk(match ? '|' : ' ', match ? 'match-bar' : 'res-gap'));
+        }
+        alnPanel.classList.add('visible');
+    }
+
+    // ── Coordinate transform ──────────────────────────────────────────────────
+    function transformPDB(pdbText, u, t) {
+        return pdbText.split('\n').map(line => {
+            if (!line.startsWith('ATOM') && !line.startsWith('HETATM')) return line;
+            const x = parseFloat(line.substring(30, 38));
+            const y = parseFloat(line.substring(38, 46));
+            const z = parseFloat(line.substring(46, 54));
+            if (isNaN(x)) return line;
+            const nx = u[0][0]*x + u[0][1]*y + u[0][2]*z + t[0];
+            const ny = u[1][0]*x + u[1][1]*y + u[1][2]*z + t[1];
+            const nz = u[2][0]*x + u[2][1]*y + u[2][2]*z + t[2];
+            return line.substring(0, 30) +
+                nx.toFixed(3).padStart(8) + ny.toFixed(3).padStart(8) + nz.toFixed(3).padStart(8) +
+                line.substring(54);
+        }).join('\n');
+    }
+
+    // ── Flexible alignment ────────────────────────────────────────────────────
+    flexBtn.addEventListener('click', async () => {
+        flexBtn.disabled = true;
+        loading.classList.add('visible');
+        loadingMsg.textContent = 'Running BICExact…';
+        statusbar.textContent = 'Running BICExact flexible alignment…';
+        try {
+            const bicResult = await runBICExact(pdbA, pdbBtAligned);
+            const { pdb: pdbFlex, segments, rmsdh } = flexibleAlignPDB(pdbA, pdbBtAligned, bicResult.hingeResidues);
+
+            currentSegs  = segments;
+            pdbBtAligned = pdbFlex;
+
+            $('stat-rmsdh').textContent = (rmsdh ?? bicResult.rmsdh ?? 0).toFixed(3) + ' Å';
+            $('stat-hinges').textContent = bicResult.hingeCount;
+            if (bicResult.hingeResidues.length > 0) {
+                $('stat-hinge-pos').textContent = bicResult.hingeResidues.join(', ');
+                $('hinge-pos-row').style.display = '';
+            }
+            $('flex-stats').classList.add('visible');
+
+            const legendEl = $('legend-flex');
+            legendEl.innerHTML = '';
+            segments.forEach((seg, si) => {
+                const c = SEG_COLORS[si % SEG_COLORS.length];
+                legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${c}"></div><span style="font-size:0.65rem">Seg ${si+1}: ${seg.minRes}–${seg.maxRes}</span></div>`;
+            });
+
+            showStructures();
+            const impr = bicResult.rmsd && rmsdh ? ((1 - rmsdh / bicResult.rmsd) * 100).toFixed(0) : '?';
+            statusbar.textContent =
+                `Flexible — RMSDh: ${(rmsdh ?? 0).toFixed(3)} Å  ·  ` +
+                `${bicResult.hingeCount} hinge(s) at residue(s) ${bicResult.hingeResidues.join(', ')}  ·  ` +
+                `${impr}% improvement over rigid`;
+
+        } catch (err) {
+            statusbar.textContent = 'Flexible align error: ' + err.message;
+            console.error(err);
+        } finally {
+            loading.classList.remove('visible');
+            flexBtn.disabled = false;
+        }
+    });
+
+    // ── Preload demo proteins ─────────────────────────────────────────────────
+    (async () => {
+        try {
+            const data = await fetch('./test-data.json').then(r => r.json());
+            pdbA = data.ref; labelA = 'CarR WT ref';
+            pdbB = data.mut; labelB = 'CarR mutant';
+            $('name-a').textContent = 'fold_carr_wt_ref_model_0.cif';
+            $('name-b').textContent = 'fold_carr_37822_1_120_mutant_model_0.cif';
+            $('hint-a').style.display = 'none';
+            $('hint-b').style.display = 'none';
+            $('zone-a').classList.add('loaded-a');
+            $('zone-b').classList.add('loaded-b');
+            showStructures();
+            checkReady();
+            alignBtn.click();
+        } catch(e) {
+            console.warn('Could not preload demo data:', e);
+        }
+    })();
+
+    // ── Rigid alignment ───────────────────────────────────────────────────────
+    alignBtn.addEventListener('click', async () => {
+        alignBtn.disabled = true;
+        loading.classList.add('visible');
+        loadingMsg.textContent = 'Running TM-align…';
+        statusbar.textContent = 'Running TM-align…';
+        try {
+            const result = await tmalign(pdbA, pdbB);
+            const parsed = parse(result.output);
+            const mat    = parseMatrix(result.matrix);
+
+            $('stat-tm').textContent   = parsed.tmScore.toFixed(4);
+            $('stat-rmsd').textContent = parsed.rmsd.toFixed(3) + ' Å';
+            const alnLen = parsed.qAln.replace(/-/g, '').length;
+            $('stat-aln').textContent = alnLen;
+            $('tm-fill').style.width  = (Math.min(parsed.tmScore, 1) * 100) + '%';
+            $('leg-a').textContent = labelA;
+            $('leg-b').textContent = labelB;
+            stats.classList.add('visible');
+
+            // Detect mutations from alignment
+            const resNumsA = parseCACoords(pdbA).map(c => c.resNum);
+            const resNumsB = parseCACoords(pdbB).map(c => c.resNum);
+            mutations = findMutations(parsed.qAln, parsed.tAln, resNumsA, resNumsB);
+            if (mutations.inA.length > 0) {
+                $('stat-mut').textContent = mutations.inA.length;
+                $('mut-row').style.display = '';
+                $('leg-mut-item').style.display = '';
+            } else {
+                $('mut-row').style.display = 'none';
+                $('leg-mut-item').style.display = 'none';
+            }
+
+            pdbBtAligned = transformPDB(pdbB, mat.u, mat.t);
+            currentSegs  = null;
+            colorMode    = 'solid';
+            colorSelect.value = 'solid';
+
+            showStructures();
+            flexBtn.disabled = false;
+            renderAlignment(parsed.qAln, parsed.tAln);
+
+            const quality = parsed.tmScore >= 0.5 ? 'same fold' : parsed.tmScore >= 0.3 ? 'similar topology' : 'low similarity';
+            statusbar.textContent =
+                `TM-score: ${parsed.tmScore.toFixed(4)} (${quality})  ·  RMSD: ${parsed.rmsd.toFixed(3)} Å  ·  ${alnLen} residues aligned`;
+
+        } catch (err) {
+            statusbar.textContent = 'Error: ' + err.message;
+            console.error(err);
+        } finally {
+            loading.classList.remove('visible');
+            alignBtn.disabled = false;
+        }
+    });
+</script>
+
+</body>
+</html>
