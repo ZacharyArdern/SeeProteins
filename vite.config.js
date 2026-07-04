@@ -3,6 +3,7 @@ import { readFileSync } from 'fs'
 import { resolve, join } from 'path'
 
 export default defineConfig({
+  base: process.env.GITHUB_ACTIONS ? '/SeeProteins/' : '/',
   plugins: [
     {
       name: 'serve-wasm-binary',
