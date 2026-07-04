@@ -23,7 +23,7 @@ export function tmalign(pdb1, pdb2, alignment = null) {
             } else {
                 reject(new Error(`TM-align exited with code ${err}`));
             }
-        });
+        }).catch(reject);
     });
 }
 
