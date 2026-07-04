@@ -1,6 +1,6 @@
 import createBICExact from './bicexact.js';
 
-const WASM_URL = '/bicexact.wasm';
+const WASM_URL = import.meta.env.BASE_URL + 'bicexact.wasm';
 
 function detectChain(pdbText) {
     for (const line of pdbText.split('\n'))

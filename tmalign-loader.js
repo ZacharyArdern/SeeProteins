@@ -1,6 +1,6 @@
 import createTmalign from './node_modules/tmalign-wasm/tmalign-wasm.js'
 
-const WASM_URL = '/tmalign-wasm.wasm';
+const WASM_URL = import.meta.env.BASE_URL + 'tmalign-wasm.wasm';
 
 export function tmalign(pdb1, pdb2, alignment = null) {
     return new Promise((resolve, reject) => {
