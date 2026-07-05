@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Browser-based protein structure alignment viewer",
   "dependencies": {
+    "onnxruntime-web": "^1.18.0",
     "tmalign-wasm": "latest"
   },
   "scripts": {

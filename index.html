@@ -225,6 +225,15 @@
         .res-gap      { color: #222238; }
         .match-bar    { color: #3a6a3a; }
 
+        /* ── Stability panel ── */
+        .ddg-row { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+        .ddg-mut { font-size: 0.75rem; font-family: 'Courier New', monospace; color: #c0c0e0; }
+        .ddg-val { font-size: 0.82rem; font-weight: 700; }
+        .ddg-pos { color: #e06060; }
+        .ddg-neg { color: #54c878; }
+        .ddg-zero { color: #8080a0; }
+        .ddg-unit { font-size: 0.6rem; color: #5a5a7a; font-weight: 400; margin-left: 1px; }
+
         /* ── Export button ── */
         .export-btn {
             position: absolute;
@@ -359,6 +368,11 @@
             <div class="legend" id="legend-flex" style="flex-wrap:wrap;gap:5px"></div>
         </div>
 
+        <div class="stats" id="stability-stats">
+            <div class="stats-title">Stability ΔΔG <span style="font-size:0.55rem;color:#4040a0;text-transform:none;letter-spacing:0">(ThermoMPNN)</span></div>
+            <div id="stability-rows"></div>
+        </div>
+
     </div><!-- /sidebar -->
 
     <div class="content-wrap">
@@ -424,6 +438,7 @@
     import { tmalign, parse, parseMatrix } from './tmalign-loader.js';
     import { runBICExact } from './bicexact-loader.js';
     import { flexibleAlignPDB, parseCACoords } from './kabsch.js';
+    import { computeLogits, ddG as thermoDdG } from './thermompnn-loader.js';
 
     // ── CIF → PDB ──────────────────────────────────────────────────────────────
     function cifToPDB(cifText) {
@@ -668,19 +683,22 @@
 
     // ── Mutation detection ────────────────────────────────────────────────────
     function findMutations(qAln, tAln, resNumsA, resNumsB) {
-        const inA = [], inB = [];
+        const inA = [], inB = [], pairs = [];
         let ai = 0, bi = 0;
         for (let i = 0; i < qAln.length; i++) {
             const qa = qAln[i], ta = tAln[i];
             const gapA = qa === '-', gapB = ta === '-';
             if (!gapA && !gapB && qa !== ta) {
-                if (ai < resNumsA.length) inA.push(resNumsA[ai]);
-                if (bi < resNumsB.length) inB.push(resNumsB[bi]);
+                const rna = ai < resNumsA.length ? resNumsA[ai] : null;
+                const rnb = bi < resNumsB.length ? resNumsB[bi] : null;
+                if (rna !== null) inA.push(rna);
+                if (rnb !== null) inB.push(rnb);
+                pairs.push({ resNumA: rna, wtAA: qa, mutAA: ta });
             }
             if (!gapA) ai++;
             if (!gapB) bi++;
         }
-        return { inA, inB };
+        return { inA, inB, pairs };
     }
 
     // ── Sequence alignment rendering ──────────────────────────────────────────
@@ -717,6 +735,38 @@
                 nx.toFixed(3).padStart(8) + ny.toFixed(3).padStart(8) + nz.toFixed(3).padStart(8) +
                 line.substring(54);
         }).join('\n');
+    }
+
+    // ── Stability prediction ──────────────────────────────────────────────────
+    function renderStabilityRow(p, val) {
+        const cls  = val > 0.3 ? 'ddg-pos' : val < -0.3 ? 'ddg-neg' : 'ddg-zero';
+        const sign = val > 0 ? '+' : '';
+        return `<div class="ddg-row">
+            <span class="ddg-mut">${p.wtAA}${p.resNumA}${p.mutAA}</span>
+            <span class="ddg-val ${cls}">${sign}${val.toFixed(2)}<span class="ddg-unit">kcal/mol</span></span>
+        </div>`;
+    }
+
+    async function computeStability() {
+        if (!pdbA || !mutations?.pairs?.length) return;
+        const statsEl = $('stability-stats');
+        const rowsEl  = $('stability-rows');
+        statsEl.classList.add('visible');
+        rowsEl.innerHTML = '<div style="font-size:0.7rem;color:#5050a0">Computing…</div>';
+        try {
+            const { logits, resNumToIdx } = await computeLogits(pdbA);
+            const rows = mutations.pairs
+                .filter(p => p.resNumA !== null && resNumToIdx[p.resNumA] !== undefined)
+                .map(p => {
+                    const idx = resNumToIdx[p.resNumA];
+                    const val = thermoDdG(logits, idx, p.wtAA, p.mutAA);
+                    return val !== null ? renderStabilityRow(p, val) : '';
+                });
+            rowsEl.innerHTML = rows.length ? rows.join('') : '<div style="font-size:0.7rem;color:#5050a0">No scoreable mutations</div>';
+        } catch(e) {
+            rowsEl.innerHTML = `<div style="font-size:0.7rem;color:#e06060">${e.message}</div>`;
+            console.error('ThermoMPNN:', e);
+        }
     }
 
     // ── Flexible alignment ────────────────────────────────────────────────────
@@ -823,6 +873,7 @@
             colorSelect.value = 'solid';
 
             showStructures();
+            computeStability(); // fire-and-forget; updates sidebar when ready
             renderAlignment(parsed.qAln, parsed.tAln);
 
             const quality = parsed.tmScore >= 0.5 ? 'same fold' : parsed.tmScore >= 0.3 ? 'similar topology' : 'low similarity';
