@@ -120,6 +120,24 @@
         }
         .opt-select:focus { border-color: #7c6fff; }
 
+        /* ── Session list ── */
+        .session-item {
+            background: #13132a;
+            border: 1px solid #2a2a48;
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-size: 0.72rem;
+            color: #8080a0;
+            cursor: pointer;
+            line-height: 1.4;
+            transition: border-color 0.15s, color 0.15s;
+        }
+        .session-item:hover { border-color: #4040a0; color: #b0b0d0; }
+        .session-item.active { border-color: #7c6fff; color: #d0d0f0; background: #1a1a38; }
+        .session-item-name { font-weight: 600; color: inherit; }
+        .session-item-meta { font-size: 0.65rem; color: #50508a; margin-top: 1px; }
+        .session-item.active .session-item-meta { color: #7070b0; }
+
         /* ── Stats ── */
         .stats { background: #1b1b30; border-radius: 9px; padding: 11px; display: none; flex-direction: column; gap: 7px; }
         .stats.visible { display: flex; }
@@ -374,6 +392,18 @@
             <div id="stability-rows"></div>
         </div>
 
+        <div class="opts-section" id="sessions-panel" style="display:none">
+            <div class="opts-title">Sessions</div>
+            <div id="session-list" style="display:flex;flex-direction:column;gap:5px"></div>
+            <div style="display:flex;gap:6px;margin-top:2px">
+                <button class="btn btn-secondary" id="save-session-btn" style="flex:1;font-size:0.7rem;padding:5px 4px">Save</button>
+                <label class="btn btn-secondary" style="flex:1;font-size:0.7rem;padding:5px 4px;cursor:pointer;text-align:center">
+                    Load
+                    <input type="file" accept=".json" multiple id="load-session-input" style="display:none">
+                </label>
+            </div>
+        </div>
+
     </div><!-- /sidebar -->
 
     <div class="content-wrap">
@@ -483,6 +513,12 @@
     let mutDisplay   = 'surface'; // 'sphere' | 'surface' | 'none'
     let activePanel  = null;   // selected panel DOM element
     let activeViewer = null;   // selected 3Dmol viewer
+
+    // ── Session state ─────────────────────────────────────────────────────────
+    let sessions         = [];
+    let activeSessionIdx = -1;
+    let currentAlignment = null; // {qAln, tAln, tmScore, rmsd, alnLen}
+    let currentStability = null; // [{resNumA, wtAA, mutAA, ddg}, ...]
 
     const SEG_COLORS = ['#e8854a','#54c898','#e8c84a','#c854e8','#54c8e8','#e85478'];
     const MUT_COLOR  = '#f5e642';
@@ -772,13 +808,16 @@
         rowsEl.innerHTML = '<div style="font-size:0.7rem;color:#5050a0">Computing…</div>';
         try {
             const { logits, resNumToIdx } = await computeLogits(pdbA);
+            const scored = [];
             const rows = mutations.pairs
                 .filter(p => p.resNumA !== null && resNumToIdx[p.resNumA] !== undefined)
                 .map(p => {
                     const idx = resNumToIdx[p.resNumA];
                     const val = thermoDdG(logits, idx, p.wtAA, p.mutAA);
+                    if (val !== null) scored.push({ resNumA: p.resNumA, wtAA: p.wtAA, mutAA: p.mutAA, ddg: val });
                     return val !== null ? renderStabilityRow(p, val) : '';
                 });
+            currentStability = scored.length ? scored : null;
             rowsEl.innerHTML = rows.length ? rows.join('') : '<div style="font-size:0.7rem;color:#5050a0">No scoreable mutations</div>';
         } catch(e) {
             rowsEl.innerHTML = `<div style="font-size:0.7rem;color:#e06060">${e.message}</div>`;
@@ -827,6 +866,7 @@
         } finally {
             loading.classList.remove('visible');
             flexBtn.disabled = false;
+            syncActiveSession();
         }
     }
 
@@ -887,6 +927,9 @@
             currentSegs  = null;
             colorMode    = 'solid';
             colorSelect.value = 'solid';
+            currentStability = null;
+            currentAlignment = { qAln: parsed.qAln, tAln: parsed.tAln,
+                                 tmScore: parsed.tmScore, rmsd: parsed.rmsd, alnLen };
 
             showStructures();
             computeStability();
@@ -902,10 +945,136 @@
         } finally {
             loading.classList.remove('visible');
             alignBtn.disabled = false;
+            syncActiveSession();
         }
     }
 
     alignBtn.addEventListener('click', () => runRigidAlign());
+
+    // ── Session save / load ───────────────────────────────────────────────────
+    function captureSession() {
+        return {
+            version:   1,
+            labelA, labelB,
+            pdbA, pdbB,
+            pdbBtAligned,
+            currentSegs,
+            alignment:  currentAlignment  ? { ...currentAlignment }  : null,
+            mutations:  mutations         ? JSON.parse(JSON.stringify(mutations)) : null,
+            stability:  currentStability  ? [...currentStability]     : null,
+        };
+    }
+
+    function applySession(s) {
+        pdbA         = s.pdbA;
+        pdbB         = s.pdbB;
+        pdbBtAligned = s.pdbBtAligned;
+        labelA       = s.labelA;
+        labelB       = s.labelB;
+        currentSegs  = s.currentSegs  ?? null;
+        mutations    = s.mutations    ?? null;
+        currentAlignment = s.alignment ?? null;
+        currentStability = s.stability ?? null;
+        colorMode    = currentSegs ? 'segment' : 'solid';
+        colorSelect.value = colorMode;
+
+        initViewers();
+        showStructures();
+
+        if (s.alignment) {
+            const a = s.alignment;
+            $('stat-tm').textContent   = a.tmScore.toFixed(4);
+            $('stat-rmsd').textContent = a.rmsd.toFixed(3) + ' Å';
+            $('stat-aln').textContent  = a.alnLen;
+            $('tm-fill').style.width   = (Math.min(a.tmScore, 1) * 100) + '%';
+            $('leg-a').textContent     = labelA;
+            $('leg-b').textContent     = labelB;
+            $('stats').classList.add('visible');
+            renderAlignment(a.qAln, a.tAln);
+        }
+
+        if (mutations?.inA?.length > 0) {
+            $('stat-mut').textContent = mutations.inA.length;
+            $('mut-row').style.display = '';
+            $('leg-mut-item').style.display = '';
+        } else {
+            $('mut-row').style.display = 'none';
+            $('leg-mut-item').style.display = 'none';
+        }
+
+        const rowsEl  = $('stability-rows');
+        const statsEl = $('stability-stats');
+        if (s.stability?.length) {
+            statsEl.classList.add('visible');
+            rowsEl.innerHTML = s.stability.map(p => renderStabilityRow(p, p.ddg)).join('');
+        } else {
+            statsEl.classList.remove('visible');
+            rowsEl.innerHTML = '';
+        }
+
+        alignBtn.disabled = false;
+        flexBtn.disabled  = !pdbBtAligned;
+    }
+
+    function renderSessionList() {
+        const list = $('session-list');
+        list.innerHTML = '';
+        sessions.forEach((s, i) => {
+            const el = document.createElement('div');
+            el.className = 'session-item' + (i === activeSessionIdx ? ' active' : '');
+            const tm = s.alignment ? s.alignment.tmScore.toFixed(3) : '—';
+            const mut = s.mutations?.inA?.length ?? 0;
+            el.innerHTML = `<div class="session-item-name">${s.labelA} / ${s.labelB}</div>
+                <div class="session-item-meta">TM ${tm} · ${mut} mut${mut !== 1 ? 's' : ''}${s.stability ? ' · ΔΔG' : ''}</div>`;
+            el.addEventListener('click', () => {
+                activeSessionIdx = i;
+                applySession(sessions[i]);
+                renderSessionList();
+            });
+            list.appendChild(el);
+        });
+        $('sessions-panel').style.display = sessions.length ? '' : 'none';
+    }
+
+    $('save-session-btn').addEventListener('click', () => {
+        if (!pdbA || !pdbBtAligned) return;
+        const s = captureSession();
+        sessions[activeSessionIdx >= 0 ? activeSessionIdx : sessions.length] = s;
+        if (activeSessionIdx < 0) activeSessionIdx = sessions.length - 1;
+        const name = `${s.labelA}_vs_${s.labelB}`.replace(/[^a-zA-Z0-9_\-]/g, '_');
+        const blob = new Blob([JSON.stringify(s)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name + '.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        renderSessionList();
+    });
+
+    $('load-session-input').addEventListener('change', async (e) => {
+        for (const file of e.target.files) {
+            try {
+                const text = await file.text();
+                const s = JSON.parse(text);
+                if (!s.pdbA || !s.pdbBtAligned) { alert(`${file.name}: not a valid session file`); continue; }
+                sessions.push(s);
+                activeSessionIdx = sessions.length - 1;
+                applySession(s);
+            } catch(err) {
+                alert(`${file.name}: failed to load (${err.message})`);
+            }
+        }
+        e.target.value = '';
+        renderSessionList();
+    });
+
+    // Auto-update active session slot when a new alignment completes
+    function syncActiveSession() {
+        if (activeSessionIdx >= 0 && sessions[activeSessionIdx]) {
+            sessions[activeSessionIdx] = captureSession();
+            renderSessionList();
+        }
+    }
 </script>
 
 </body>
