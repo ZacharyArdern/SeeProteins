@@ -217,6 +217,25 @@
         .res-gap      { color: #222238; }
         .match-bar    { color: #3a6a3a; }
 
+        /* ── Export button ── */
+        .export-btn {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            z-index: 20;
+            background: rgba(22, 22, 37, 0.75);
+            border: 1px solid #2a2a4a;
+            border-radius: 5px;
+            color: #6060a0;
+            font-size: 0.62rem;
+            padding: 3px 7px;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            transition: color 0.15s, border-color 0.15s;
+            user-select: none;
+        }
+        .export-btn:hover { color: #c0c0e0; border-color: #5050a0; }
+
         /* ── Status bar ── */
         .statusbar { padding: 3px 14px; font-size: 0.68rem; color: #3a3a58; background: #0c0c16; flex-shrink: 0; border-top: 1px solid #18182a; }
     </style>
@@ -338,6 +357,7 @@
                 <div class="panel-label">Overlay</div>
                 <div class="panel-hint">click · ↑↓←→ to rotate</div>
                 <div class="panel-inner" id="viewer-overlay"></div>
+                <button class="export-btn" id="export-overlay">↓ PNG</button>
                 <div class="empty-overlay" id="empty-overlay">
                     <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <circle cx="30" cy="30" r="12" stroke="currentColor" stroke-width="4"/>
@@ -355,12 +375,14 @@
             <div class="panel" id="panel-a">
                 <div class="panel-label" style="color:#2a4a6a">Protein A</div>
                 <div class="panel-inner" id="viewer-a"></div>
+                <button class="export-btn" id="export-a">↓ PNG</button>
             </div>
 
             <!-- Protein B: bottom right -->
             <div class="panel" id="panel-b">
                 <div class="panel-label" style="color:#6a3a1a">Protein B</div>
                 <div class="panel-inner" id="viewer-b"></div>
+                <button class="export-btn" id="export-b">↓ PNG</button>
             </div>
 
         </div><!-- /panels -->
@@ -498,6 +520,32 @@
         renderToViewer(viewerB,       null, bData);
         renderToViewer(viewerOverlay, pdbA, bData);
     }
+
+    // ── PNG export ────────────────────────────────────────────────────────────
+    function slug(s) { return s.replace(/[^a-zA-Z0-9_\-]/g, '_'); }
+
+    function downloadPNG(viewer, filename) {
+        const uri = viewer.pngURI();
+        const a = document.createElement('a');
+        a.href = uri;
+        a.download = filename + '.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    $('export-overlay').addEventListener('click', e => {
+        e.stopPropagation();
+        if (viewerOverlay) downloadPNG(viewerOverlay, `${slug(labelA)}_vs_${slug(labelB)}_overlay`);
+    });
+    $('export-a').addEventListener('click', e => {
+        e.stopPropagation();
+        if (viewerA) downloadPNG(viewerA, slug(labelA));
+    });
+    $('export-b').addEventListener('click', e => {
+        e.stopPropagation();
+        if (viewerB) downloadPNG(viewerB, slug(labelB));
+    });
 
     // ── Panel selection + arrow-key rotation ──────────────────────────────────
     function selectPanel(panelEl, vwr) {
