@@ -291,6 +291,7 @@
 
         <button class="btn" id="flex-btn" disabled>Flexible Align</button>
         <button class="btn btn-secondary" id="align-btn" disabled>Rigid Align</button>
+        <button class="btn btn-secondary" id="bg-btn">Background: Dark</button>
 
         <div class="opts-section">
             <div class="opts-title">Display</div>
@@ -307,14 +308,6 @@
                     <option value="sphere">Sphere (Cα)</option>
                     <option value="surface" selected>Surface (Cα)</option>
                     <option value="none">Hidden</option>
-                </select>
-            </div>
-            <div class="opt-row">
-                <span class="opt-label">PNG bg</span>
-                <select class="opt-select" id="png-bg-select">
-                    <option value="dark" selected>Dark</option>
-                    <option value="white">White</option>
-                    <option value="transparent">Transparent</option>
                 </select>
             </div>
         </div>
@@ -483,7 +476,7 @@
     let pdbA = null, pdbB = null, pdbBtAligned = null;
     let labelA = 'Protein A', labelB = 'Protein B';
     let viewerA = null, viewerB = null, viewerOverlay = null;
-    let pngBg = 'dark';
+    let viewerBg = 'dark';
     let mutations    = null;   // {inA:[resNums], inB:[resNums]}
     let currentSegs  = null;   // segments from flex align
     let colorMode    = 'solid';  // 'solid' | 'segment'
@@ -508,7 +501,8 @@
     // ── Viewer initialisation ──────────────────────────────────────────────────
     function initViewers() {
         if (viewerA) return;
-        const bg = { backgroundColor: '#0c0c16' };
+        const bgColor = viewerBg === 'white' ? '#ffffff' : '#0c0c16';
+        const bg = { backgroundColor: bgColor };
         viewerA       = $3Dmol.createViewer($('viewer-a'),       bg);
         viewerB       = $3Dmol.createViewer($('viewer-b'),       bg);
         viewerOverlay = $3Dmol.createViewer($('viewer-overlay'), bg);
@@ -567,19 +561,21 @@
     // ── PNG export ────────────────────────────────────────────────────────────
     function slug(s) { return s.replace(/[^a-zA-Z0-9_\-]/g, '_'); }
 
-    $('png-bg-select').addEventListener('change', e => { pngBg = e.target.value; });
+    function applyViewerBg() {
+        const color = viewerBg === 'white' ? '#ffffff' : '#0c0c16';
+        for (const v of [viewerA, viewerB, viewerOverlay]) {
+            if (v) { v.setBackgroundColor(color, 1); v.render(); }
+        }
+    }
+
+    $('bg-btn').addEventListener('click', () => {
+        viewerBg = viewerBg === 'dark' ? 'white' : 'dark';
+        $('bg-btn').textContent = viewerBg === 'dark' ? 'Background: Dark' : 'Background: White';
+        applyViewerBg();
+    });
 
     function downloadPNG(viewer, filename) {
-        if (pngBg !== 'dark') {
-            const alpha = pngBg === 'transparent' ? 0 : 1;
-            viewer.setBackgroundColor(0xffffff, alpha);
-            viewer.render();
-        }
         const uri = viewer.pngURI();
-        if (pngBg !== 'dark') {
-            viewer.setBackgroundColor('#0c0c16', 1);
-            viewer.render();
-        }
         const a = document.createElement('a');
         a.href = uri;
         a.download = filename + '.png';
