@@ -309,6 +309,14 @@
                     <option value="none">Hidden</option>
                 </select>
             </div>
+            <div class="opt-row">
+                <span class="opt-label">PNG bg</span>
+                <select class="opt-select" id="png-bg-select">
+                    <option value="dark" selected>Dark</option>
+                    <option value="white">White</option>
+                    <option value="transparent">Transparent</option>
+                </select>
+            </div>
         </div>
 
         <div class="stats" id="stats">
@@ -434,7 +442,7 @@
 <div class="statusbar" id="statusbar">Load two PDB files to begin.</div>
 <div class="footer-note">Code, sources &amp; citation: <a href="https://github.com/ZacharyArdern/SeeProteins" target="_blank">github.com/ZacharyArdern/SeeProteins</a></div>
 
-<script src="ort.all.min.js"></script>
+<script src="ort.wasm.min.js"></script>
 <script type="module">
     import { tmalign, parse, parseMatrix } from './tmalign-loader.js';
     import { runBICExact } from './bicexact-loader.js';
@@ -475,6 +483,7 @@
     let pdbA = null, pdbB = null, pdbBtAligned = null;
     let labelA = 'Protein A', labelB = 'Protein B';
     let viewerA = null, viewerB = null, viewerOverlay = null;
+    let pngBg = 'dark';
     let mutations    = null;   // {inA:[resNums], inB:[resNums]}
     let currentSegs  = null;   // segments from flex align
     let colorMode    = 'solid';  // 'solid' | 'segment'
@@ -558,8 +567,19 @@
     // ── PNG export ────────────────────────────────────────────────────────────
     function slug(s) { return s.replace(/[^a-zA-Z0-9_\-]/g, '_'); }
 
+    $('png-bg-select').addEventListener('change', e => { pngBg = e.target.value; });
+
     function downloadPNG(viewer, filename) {
+        if (pngBg !== 'dark') {
+            const alpha = pngBg === 'transparent' ? 0 : 1;
+            viewer.setBackgroundColor(0xffffff, alpha);
+            viewer.render();
+        }
         const uri = viewer.pngURI();
+        if (pngBg !== 'dark') {
+            viewer.setBackgroundColor('#0c0c16', 1);
+            viewer.render();
+        }
         const a = document.createElement('a');
         a.href = uri;
         a.download = filename + '.png';
