@@ -659,8 +659,9 @@
     });
 
     function checkReady() {
-        alignBtn.disabled = !(pdbA && pdbB);
-        if (pdbA && pdbB) statusbar.textContent = 'Both structures loaded. Click "Align Structures".';
+        const ready = !!(pdbA && pdbB);
+        alignBtn.disabled = !ready;
+        if (ready) setTimeout(() => alignBtn.click(), 0);
     }
 
     // ── Mutation detection ────────────────────────────────────────────────────
@@ -774,7 +775,6 @@
             $('zone-b').classList.add('loaded-b');
             showStructures();
             checkReady();
-            alignBtn.click();
         } catch(e) {
             console.warn('Could not preload demo data:', e);
         }
@@ -821,6 +821,7 @@
             showStructures();
             flexBtn.disabled = false;
             renderAlignment(parsed.qAln, parsed.tAln);
+            flexBtn.click();
 
             const quality = parsed.tmScore >= 0.5 ? 'same fold' : parsed.tmScore >= 0.3 ? 'similar topology' : 'low similarity';
             statusbar.textContent =
