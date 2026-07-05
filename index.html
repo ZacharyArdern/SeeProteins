@@ -219,8 +219,9 @@
         .aln-name-b { color: #e8854a; }
         .aln-name-m { color: #3a3a5a; }
         .aln-seq span { display: inline-block; }
-        .res-match    { color: #54c868; }
-        .res-mismatch { color: #e06060; }
+        .res-a        { color: #4a90d9; }
+        .res-b        { color: #e8854a; }
+        .res-mut      { color: #f5e642; }
         .res-gap      { color: #222238; }
         .match-bar    { color: #3a6a3a; }
 
@@ -245,8 +246,8 @@
 
         /* ── Status bar ── */
         .statusbar { padding: 3px 14px; font-size: 0.68rem; color: #3a3a58; background: #0c0c16; flex-shrink: 0; border-top: 1px solid #18182a; }
-        .footer-note { padding: 2px 14px; font-size: 0.62rem; color: #ffffff; background: #0c0c16; flex-shrink: 0; text-align: center; opacity: 0.45; }
-        .footer-note a { color: #a0a0ff; text-decoration: none; }
+        .footer-note { padding: 3px 14px; font-size: 0.75rem; color: #ffffff; background: #0c0c16; flex-shrink: 0; text-align: center; }
+        .footer-note a { color: #9090c0; text-decoration: none; }
         .footer-note a:hover { text-decoration: underline; }
     </style>
 </head>
@@ -662,6 +663,7 @@
         const ready = !!(pdbA && pdbB);
         alignBtn.disabled = !ready;
         if (ready) setTimeout(() => alignBtn.click(), 0);
+        // flexBtn enabled only after rigid align runs (needs pdbBtAligned)
     }
 
     // ── Mutation detection ────────────────────────────────────────────────────
@@ -687,15 +689,15 @@
         $('aln-name-b').textContent = labelB;
         const seqA = $('aln-seq-a'), seqB = $('aln-seq-b'), matchEl = $('aln-match');
         seqA.innerHTML = seqB.innerHTML = matchEl.innerHTML = '';
+        const mk = (ch, c) => { const s = document.createElement('span'); s.textContent = ch; s.className = c; return s; };
         for (let i = 0; i < qAln.length; i++) {
             const qa = qAln[i], ta = tAln[i];
-            const gap = qa === '-' || ta === '-';
-            const match = !gap && qa === ta;
-            const cls = gap ? 'res-gap' : match ? 'res-match' : 'res-mismatch';
-            const mk = (ch, c) => { const s = document.createElement('span'); s.textContent = ch; s.className = c; return s; };
-            seqA.appendChild(mk(qa, cls));
-            seqB.appendChild(mk(ta, cls));
-            matchEl.appendChild(mk(match ? '|' : ' ', match ? 'match-bar' : 'res-gap'));
+            const gapA = qa === '-', gapB = ta === '-';
+            const isMut  = !gapA && !gapB && qa !== ta;
+            const isMatch = !gapA && !gapB && qa === ta;
+            seqA.appendChild(mk(qa, gapA ? 'res-gap' : isMut ? 'res-mut' : 'res-a'));
+            seqB.appendChild(mk(ta, gapB ? 'res-gap' : isMut ? 'res-mut' : 'res-b'));
+            matchEl.appendChild(mk(isMatch ? '|' : ' ', isMatch ? 'match-bar' : 'res-gap'));
         }
         alnPanel.classList.add('visible');
     }
@@ -718,7 +720,7 @@
     }
 
     // ── Flexible alignment ────────────────────────────────────────────────────
-    flexBtn.addEventListener('click', async () => {
+    async function runFlexAlign() {
         flexBtn.disabled = true;
         loading.classList.add('visible');
         loadingMsg.textContent = 'Running BICExact…';
@@ -759,7 +761,9 @@
             loading.classList.remove('visible');
             flexBtn.disabled = false;
         }
-    });
+    }
+
+    flexBtn.addEventListener('click', () => runFlexAlign());
 
     // ── Preload demo proteins ─────────────────────────────────────────────────
     (async () => {
@@ -819,13 +823,13 @@
             colorSelect.value = 'solid';
 
             showStructures();
-            flexBtn.disabled = false;
             renderAlignment(parsed.qAln, parsed.tAln);
-            flexBtn.click();
 
             const quality = parsed.tmScore >= 0.5 ? 'same fold' : parsed.tmScore >= 0.3 ? 'similar topology' : 'low similarity';
             statusbar.textContent =
                 `TM-score: ${parsed.tmScore.toFixed(4)} (${quality})  ·  RMSD: ${parsed.rmsd.toFixed(3)} Å  ·  ${alnLen} residues aligned`;
+
+            await runFlexAlign();
 
         } catch (err) {
             statusbar.textContent = 'Error: ' + err.message;
