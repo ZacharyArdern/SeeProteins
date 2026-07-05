@@ -80,8 +80,15 @@
         }
         .btn:hover:not(:disabled) { background: #6a5ef0; }
         .btn:disabled { background: #252540; color: #505070; cursor: not-allowed; }
-        .btn-flex { background: #3a6a4a; }
-        .btn-flex:hover:not(:disabled) { background: #2e5a3e; }
+        .btn-secondary {
+            background: #1e1e38;
+            border: 1px solid #2e2e52;
+            color: #7070a0;
+            font-size: 0.78rem;
+            font-weight: 500;
+        }
+        .btn-secondary:hover:not(:disabled) { background: #252545; color: #a0a0c0; border-color: #4040a0; }
+        .btn-secondary:disabled { background: #161626; color: #30304a; border-color: #1e1e38; }
 
         /* ── Display options ── */
         .opts-section {
@@ -238,6 +245,9 @@
 
         /* ── Status bar ── */
         .statusbar { padding: 3px 14px; font-size: 0.68rem; color: #3a3a58; background: #0c0c16; flex-shrink: 0; border-top: 1px solid #18182a; }
+        .footer-note { padding: 2px 14px; font-size: 0.62rem; color: #ffffff; background: #0c0c16; flex-shrink: 0; text-align: center; opacity: 0.45; }
+        .footer-note a { color: #a0a0ff; text-decoration: none; }
+        .footer-note a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -269,8 +279,8 @@
             <div class="dz-filename" id="name-b"></div>
         </label>
 
-        <button class="btn" id="align-btn" disabled>Align Structures</button>
-        <button class="btn btn-flex" id="flex-btn" disabled>Flexible Align</button>
+        <button class="btn" id="flex-btn" disabled>Flexible Align</button>
+        <button class="btn btn-secondary" id="align-btn" disabled>Rigid Align</button>
 
         <div class="opts-section">
             <div class="opts-title">Display</div>
@@ -406,6 +416,7 @@
 </div><!-- /main -->
 
 <div class="statusbar" id="statusbar">Load two PDB files to begin.</div>
+<div class="footer-note">Code, sources &amp; citation: <a href="https://github.com/ZacharyArdern/SeeProteins" target="_blank">github.com/ZacharyArdern/SeeProteins</a></div>
 
 <script type="module">
     import { tmalign, parse, parseMatrix } from './tmalign-loader.js';
