@@ -1,5 +1,7 @@
 # SeeProteins
 
+**[Live app →](https://zacharyardern.github.io/SeeProteins/)**
+
 Browser-based protein structure alignment and visualisation. All computation runs locally in the browser via WebAssembly — no data is sent to any server.
 
 ## Features
