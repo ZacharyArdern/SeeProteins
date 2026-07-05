@@ -295,7 +295,7 @@
                 <span class="opt-label">Mutations</span>
                 <select class="opt-select" id="mut-select">
                     <option value="sphere">Sphere (Cα)</option>
-                    <option value="surface">Surface (Cα)</option>
+                    <option value="surface" selected>Surface (Cα)</option>
                     <option value="none">Hidden</option>
                 </select>
             </div>
@@ -461,7 +461,7 @@
     let mutations    = null;   // {inA:[resNums], inB:[resNums]}
     let currentSegs  = null;   // segments from flex align
     let colorMode    = 'solid';  // 'solid' | 'segment'
-    let mutDisplay   = 'sphere'; // 'sphere' | 'none'
+    let mutDisplay   = 'surface'; // 'sphere' | 'surface' | 'none'
     let activePanel  = null;   // selected panel DOM element
     let activeViewer = null;   // selected 3Dmol viewer
 
