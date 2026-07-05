@@ -71,7 +71,7 @@ export async function computeLogits(pdbText) {
         X[base+9]=r.O[0];  X[base+10]=r.O[1]; X[base+11]=r.O[2];
         const ai = ALPHABET.indexOf(r.aa);
         S[i] = BigInt(ai >= 0 ? ai : ALPHABET.indexOf('X'));
-        residueIdx[i] = BigInt(r.resi);
+        residueIdx[i] = BigInt(i);  // sequential 0-based, matching featurize()
         resNumToIdx[r.resi] = i;
     }
 
