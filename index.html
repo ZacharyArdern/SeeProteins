@@ -548,27 +548,57 @@
     });
 
     // ── Panel selection + arrow-key rotation ──────────────────────────────────
+    let hoverViewer = null;  // viewer under mouse cursor
+    // activePanel / activeViewer = tab/click selected (persistent)
+
+    const panelCycle = [
+        { id: 'panel-overlay', getViewer: () => viewerOverlay },
+        { id: 'panel-a',       getViewer: () => viewerA },
+        { id: 'panel-b',       getViewer: () => viewerB },
+    ];
+    let tabIdx = -1;
+
     function selectPanel(panelEl, vwr) {
         if (activePanel) activePanel.classList.remove('selected');
         activePanel  = panelEl;
         activeViewer = vwr;
         panelEl.classList.add('selected');
+        tabIdx = panelCycle.findIndex(p => p.id === panelEl.id);
     }
 
-    $('panel-overlay').addEventListener('click', () => { initViewers(); selectPanel($('panel-overlay'), viewerOverlay); });
-    $('panel-a').addEventListener('click',       () => { initViewers(); selectPanel($('panel-a'),       viewerA); });
-    $('panel-b').addEventListener('click',       () => { initViewers(); selectPanel($('panel-b'),       viewerB); });
+    function setupPanelInteraction(panelId, getViewer) {
+        const el = $(panelId);
+        el.addEventListener('mouseenter', () => { initViewers(); hoverViewer = getViewer(); });
+        el.addEventListener('mouseleave', () => { hoverViewer = null; });
+        el.addEventListener('click',      () => { initViewers(); selectPanel(el, getViewer()); });
+    }
+
+    setupPanelInteraction('panel-overlay', () => viewerOverlay);
+    setupPanelInteraction('panel-a',       () => viewerA);
+    setupPanelInteraction('panel-b',       () => viewerB);
 
     document.addEventListener('keydown', e => {
-        if (!activeViewer) return;
+        // Tab cycles panel focus
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            initViewers();
+            tabIdx = (tabIdx + 1) % panelCycle.length;
+            const p = panelCycle[tabIdx];
+            selectPanel($(p.id), p.getViewer());
+            return;
+        }
+
+        // Arrow keys rotate hovered panel, or tab/click selected panel
+        const target = hoverViewer || activeViewer;
+        if (!target) return;
         if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) return;
         e.preventDefault();
         const deg = 5;
-        if (e.key === 'ArrowLeft')  activeViewer.rotate( deg, 'y');
-        if (e.key === 'ArrowRight') activeViewer.rotate(-deg, 'y');
-        if (e.key === 'ArrowUp')    activeViewer.rotate( deg, 'x');
-        if (e.key === 'ArrowDown')  activeViewer.rotate(-deg, 'x');
-        activeViewer.render();
+        if (e.key === 'ArrowLeft')  target.rotate( deg, 'y');
+        if (e.key === 'ArrowRight') target.rotate(-deg, 'y');
+        if (e.key === 'ArrowUp')    target.rotate( deg, 'x');
+        if (e.key === 'ArrowDown')  target.rotate(-deg, 'x');
+        target.render();
     });
 
     // ── Display option dropdowns ───────────────────────────────────────────────
