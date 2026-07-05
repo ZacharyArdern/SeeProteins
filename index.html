@@ -311,6 +311,19 @@
         <button class="btn btn-secondary" id="align-btn" disabled>Rigid Align</button>
         <button class="btn btn-secondary" id="bg-btn">Background: Dark</button>
 
+        <div style="display:flex;gap:6px">
+            <button class="btn btn-secondary" id="save-session-btn" disabled style="flex:1;font-size:0.7rem;padding:5px 4px">Save session</button>
+            <label class="btn btn-secondary" style="flex:1;font-size:0.7rem;padding:5px 4px;cursor:pointer;text-align:center">
+                Load session
+                <input type="file" accept=".json" multiple id="load-session-input" style="display:none">
+            </label>
+        </div>
+
+        <div class="opts-section" id="sessions-panel" style="display:none">
+            <div class="opts-title">Sessions</div>
+            <div id="session-list" style="display:flex;flex-direction:column;gap:5px"></div>
+        </div>
+
         <div class="opts-section">
             <div class="opts-title">Display</div>
             <div class="opt-row">
@@ -390,19 +403,6 @@
         <div class="stats" id="stability-stats">
             <div class="stats-title">Stability ΔΔG <span style="font-size:0.55rem;color:#4040a0;text-transform:none;letter-spacing:0">(ThermoMPNN)</span></div>
             <div id="stability-rows"></div>
-        </div>
-
-        <div style="display:flex;gap:6px">
-            <button class="btn btn-secondary" id="save-session-btn" disabled style="flex:1;font-size:0.7rem;padding:5px 4px">Save session</button>
-            <label class="btn btn-secondary" style="flex:1;font-size:0.7rem;padding:5px 4px;cursor:pointer;text-align:center">
-                Load session
-                <input type="file" accept=".json" multiple id="load-session-input" style="display:none">
-            </label>
-        </div>
-
-        <div class="opts-section" id="sessions-panel" style="display:none">
-            <div class="opts-title">Sessions</div>
-            <div id="session-list" style="display:flex;flex-direction:column;gap:5px"></div>
         </div>
 
     </div><!-- /sidebar -->
