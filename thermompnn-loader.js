@@ -1,4 +1,4 @@
-// ORT is loaded as a UMD <script> tag in index.html (ort.all.min.js),
+// ORT is loaded as a UMD <script> tag in index.html (ort.min.js),
 // which sets window.ort before any module scripts run.
 const BASE = import.meta.env.BASE_URL;
 const MODEL_URL = BASE + 'thermompnn.onnx';
@@ -53,7 +53,7 @@ function parseBackbone(pdbText) {
 export async function computeLogits(pdbText) {
     const ort = window.ort;
     const residues = parseBackbone(pdbText);
-    if (residues.length < 4) throw new Error('ThermoMPNN: fewer than 4 backbone residues found');
+    if (residues.length < 48) throw new Error('ThermoMPNN: fewer than 48 backbone residues — too short for neighbourhood graph');
 
     const L = residues.length;
     const X          = new Float32Array(L * 4 * 3);
