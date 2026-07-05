@@ -295,6 +295,7 @@
                 <span class="opt-label">Mutations</span>
                 <select class="opt-select" id="mut-select">
                     <option value="sphere">Sphere (Cα)</option>
+                    <option value="surface">Surface (Cα)</option>
                     <option value="none">Hidden</option>
                 </select>
             </div>
@@ -494,6 +495,11 @@
             vwr.addStyle(
                 { model: modelIdx, resi: resNums, atom: 'CA' },
                 { sphere: { color: MUT_COLOR, radius: 0.8, opacity: 0.95 } }
+            );
+        } else if (mutDisplay === 'surface') {
+            vwr.addStyle(
+                { model: modelIdx, resi: resNums, atom: 'CA' },
+                { sphere: { color: MUT_COLOR, radius: 2.2, opacity: 0.75 } }
             );
         }
     }
