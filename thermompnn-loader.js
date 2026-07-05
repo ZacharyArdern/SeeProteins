@@ -1,13 +1,6 @@
-// Load ORT from the pre-built ESM bundle in public/ via a Vite-ignored
-// dynamic import so Vite's minifier never touches ORT's internal eval-based
-// WASM dispatch (which causes "Ce[e] is not a function" when re-minified).
+// ORT is loaded as a UMD <script> tag in index.html (ort.all.min.js),
+// which sets window.ort before any module scripts run.
 const BASE = import.meta.env.BASE_URL;
-let _ort = null;
-async function getOrt() {
-    if (!_ort) _ort = await import(/* @vite-ignore */ BASE + 'ort.esm.min.js');
-    return _ort;
-}
-
 const MODEL_URL = BASE + 'thermompnn.onnx';
 const ALPHABET = 'ACDEFGHIKLMNPQRSTVWYX';
 
@@ -22,7 +15,8 @@ let _session = null;
 
 async function getSession() {
     if (!_session) {
-        const ort = await getOrt();
+        const ort = window.ort;
+        if (!ort) throw new Error('onnxruntime-web not loaded');
         ort.env.wasm.wasmPaths = BASE;
         ort.env.wasm.numThreads = 1;
         _session = await ort.InferenceSession.create(MODEL_URL, {
@@ -57,7 +51,7 @@ function parseBackbone(pdbText) {
 }
 
 export async function computeLogits(pdbText) {
-    const ort = await getOrt();
+    const ort = window.ort;
     const residues = parseBackbone(pdbText);
     if (residues.length < 4) throw new Error('ThermoMPNN: fewer than 4 backbone residues found');
 
