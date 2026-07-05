@@ -694,7 +694,7 @@
     function checkReady() {
         const ready = !!(pdbA && pdbB);
         alignBtn.disabled = !ready;
-        if (ready) setTimeout(() => alignBtn.click(), 0);
+        if (ready) setTimeout(() => runRigidAlign().then(runFlexAlign), 0);
         // flexBtn enabled only after rigid align runs (needs pdbBtAligned)
     }
 
@@ -852,7 +852,7 @@
     })();
 
     // ── Rigid alignment ───────────────────────────────────────────────────────
-    alignBtn.addEventListener('click', async () => {
+    async function runRigidAlign() {
         alignBtn.disabled = true;
         loading.classList.add('visible');
         loadingMsg.textContent = 'Running TM-align…';
@@ -871,7 +871,6 @@
             $('leg-b').textContent = labelB;
             stats.classList.add('visible');
 
-            // Detect mutations from alignment
             const resNumsA = parseCACoords(pdbA).map(c => c.resNum);
             const resNumsB = parseCACoords(pdbB).map(c => c.resNum);
             mutations = findMutations(parsed.qAln, parsed.tAln, resNumsA, resNumsB);
@@ -890,14 +889,12 @@
             colorSelect.value = 'solid';
 
             showStructures();
-            computeStability(); // fire-and-forget; updates sidebar when ready
+            computeStability();
             renderAlignment(parsed.qAln, parsed.tAln);
 
             const quality = parsed.tmScore >= 0.5 ? 'same fold' : parsed.tmScore >= 0.3 ? 'similar topology' : 'low similarity';
             statusbar.textContent =
                 `TM-score: ${parsed.tmScore.toFixed(4)} (${quality})  ·  RMSD: ${parsed.rmsd.toFixed(3)} Å  ·  ${alnLen} residues aligned`;
-
-            await runFlexAlign();
 
         } catch (err) {
             statusbar.textContent = 'Error: ' + err.message;
@@ -906,7 +903,9 @@
             loading.classList.remove('visible');
             alignBtn.disabled = false;
         }
-    });
+    }
+
+    alignBtn.addEventListener('click', () => runRigidAlign());
 </script>
 
 </body>
