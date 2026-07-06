@@ -186,26 +186,57 @@ export function flexibleAlignPDB(pdbA, pdbBt, hingeResidues) {
     const resToSeg = new Map();
     segments.forEach((seg, si) => seg.residues.forEach(r => resToSeg.set(r, si)));
 
+    // For the first W residues of each non-first segment, blend from the previous
+    // segment's transform toward the current one. At j=0 (first residue of segment),
+    // blend=1 → pure previous transform, guaranteeing peptide-bond continuity with
+    // the preceding segment. Blend tapers to 0 by j=W, restoring the correct
+    // per-segment superposition for the rest of the segment.
+    const W = 5;
+    const blendInfo = new Map(); // resNum → { prevSi, blend }
+    for (let si = 1; si < segments.length; si++) {
+        const res = segments[si].residues;
+        const count = Math.min(W, Math.floor(res.length / 2));
+        for (let j = 0; j < count; j++)
+            blendInfo.set(res[j], { prevSi: si - 1, blend: (count - j) / count });
+    }
+
     // Transform all atoms in pdbBt
-    const lines = pdbBt.split('\n').map(line => {
-        if (!line.startsWith('ATOM') && !line.startsWith('HETATM')) return line;
+    const lines = [];
+    for (const line of pdbBt.split('\n')) {
+        if (!line.startsWith('ATOM') && !line.startsWith('HETATM')) {
+            lines.push(line);
+            continue;
+        }
         const resNum = parseInt(line.substring(22, 26));
         const si = resToSeg.get(resNum);
-        if (si === undefined) return line;
-        const { R, t } = transforms[si];
+        if (si === undefined) { lines.push(line); continue; }
         const x = parseFloat(line.substring(30, 38));
         const y = parseFloat(line.substring(38, 46));
         const z = parseFloat(line.substring(46, 54));
-        if (isNaN(x)) return line;
-        const nx = R[0][0]*x+R[0][1]*y+R[0][2]*z+t[0];
-        const ny = R[1][0]*x+R[1][1]*y+R[1][2]*z+t[1];
-        const nz = R[2][0]*x+R[2][1]*y+R[2][2]*z+t[2];
-        return line.substring(0,30) +
+        if (isNaN(x)) { lines.push(line); continue; }
+
+        const { R, t } = transforms[si];
+        let nx = R[0][0]*x+R[0][1]*y+R[0][2]*z+t[0];
+        let ny = R[1][0]*x+R[1][1]*y+R[1][2]*z+t[1];
+        let nz = R[2][0]*x+R[2][1]*y+R[2][2]*z+t[2];
+
+        const b = blendInfo.get(resNum);
+        if (b) {
+            const { R: pR, t: pt } = transforms[b.prevSi];
+            const px = pR[0][0]*x+pR[0][1]*y+pR[0][2]*z+pt[0];
+            const py = pR[1][0]*x+pR[1][1]*y+pR[1][2]*z+pt[1];
+            const pz = pR[2][0]*x+pR[2][1]*y+pR[2][2]*z+pt[2];
+            nx = b.blend * px + (1 - b.blend) * nx;
+            ny = b.blend * py + (1 - b.blend) * ny;
+            nz = b.blend * pz + (1 - b.blend) * nz;
+        }
+
+        lines.push(line.substring(0,30) +
             nx.toFixed(3).padStart(8) +
             ny.toFixed(3).padStart(8) +
             nz.toFixed(3).padStart(8) +
-            line.substring(54);
-    });
+            line.substring(54));
+    }
 
     // Compute RMSDh after flexible alignment
     let sumSq = 0, cnt = 0;

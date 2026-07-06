@@ -327,6 +327,13 @@
         <div class="opts-section">
             <div class="opts-title">Display</div>
             <div class="opt-row">
+                <span class="opt-label">Rigid align</span>
+                <select class="opt-select" id="method-select">
+                    <option value="nw">Sequence (NW)</option>
+                    <option value="tmalign">Structure (TM-align)</option>
+                </select>
+            </div>
+            <div class="opt-row">
                 <span class="opt-label">Colors</span>
                 <select class="opt-select" id="color-select">
                     <option value="solid">Solid</option>
@@ -469,6 +476,7 @@
 <script src="ort.min.js"></script>
 <script type="module">
     import { tmalign, parse, parseMatrix } from './tmalign-loader.js';
+    import { nwRigidAlign } from './nw-align.js';
     import { runBICExact } from './bicexact-loader.js';
     import { flexibleAlignPDB, parseCACoords } from './kabsch.js';
     import { computeLogits, ddG as thermoDdG } from './thermompnn-loader.js';
@@ -894,27 +902,40 @@
 
     // ── Rigid alignment ───────────────────────────────────────────────────────
     async function runRigidAlign() {
+        const useNW = $('method-select').value !== 'tmalign';
         alignBtn.disabled = true;
         loading.classList.add('visible');
-        loadingMsg.textContent = 'Running TM-align…';
-        statusbar.textContent = 'Running TM-align…';
+        loadingMsg.textContent = useNW ? 'Running sequence alignment…' : 'Running TM-align…';
+        statusbar.textContent  = useNW ? 'Running sequence alignment…' : 'Running TM-align…';
         try {
-            const result = await tmalign(pdbA, pdbB);
-            const parsed = parse(result.output);
-            const mat    = parseMatrix(result.matrix);
+            let qAln, tAln, tmScore, rmsd, alnLen, R, t;
 
-            $('stat-tm').textContent   = parsed.tmScore.toFixed(4);
-            $('stat-rmsd').textContent = parsed.rmsd.toFixed(3) + ' Å';
-            const alnLen = parsed.qAln.replace(/-/g, '').length;
-            $('stat-aln').textContent = alnLen;
-            $('tm-fill').style.width  = (Math.min(parsed.tmScore, 1) * 100) + '%';
+            if (useNW) {
+                ({ qAln, tAln, tmScore, rmsd, alnLen, R, t } = nwRigidAlign(pdbA, pdbB));
+                pdbBtAligned = transformPDB(pdbB, R, t);
+            } else {
+                const result = await tmalign(pdbA, pdbB);
+                const parsed = parse(result.output);
+                const mat    = parseMatrix(result.matrix);
+                qAln    = parsed.qAln;
+                tAln    = parsed.tAln;
+                tmScore = parsed.tmScore;
+                rmsd    = parsed.rmsd;
+                alnLen  = parsed.qAln.replace(/-/g, '').length;
+                pdbBtAligned = transformPDB(pdbB, mat.u, mat.t);
+            }
+
+            $('stat-tm').textContent   = tmScore.toFixed(4);
+            $('stat-rmsd').textContent = rmsd.toFixed(3) + ' Å';
+            $('stat-aln').textContent  = alnLen;
+            $('tm-fill').style.width   = (Math.min(tmScore, 1) * 100) + '%';
             $('leg-a').textContent = labelA;
             $('leg-b').textContent = labelB;
             stats.classList.add('visible');
 
             const resNumsA = parseCACoords(pdbA).map(c => c.resNum);
             const resNumsB = parseCACoords(pdbB).map(c => c.resNum);
-            mutations = findMutations(parsed.qAln, parsed.tAln, resNumsA, resNumsB);
+            mutations = findMutations(qAln, tAln, resNumsA, resNumsB);
             if (mutations.inA.length > 0) {
                 $('stat-mut').textContent = mutations.inA.length;
                 $('mut-row').style.display = '';
@@ -924,21 +945,19 @@
                 $('leg-mut-item').style.display = 'none';
             }
 
-            pdbBtAligned = transformPDB(pdbB, mat.u, mat.t);
             currentSegs  = null;
             colorMode    = 'solid';
             colorSelect.value = 'solid';
             currentStability = null;
-            currentAlignment = { qAln: parsed.qAln, tAln: parsed.tAln,
-                                 tmScore: parsed.tmScore, rmsd: parsed.rmsd, alnLen };
+            currentAlignment = { qAln, tAln, tmScore, rmsd, alnLen };
 
             showStructures();
             computeStability();
-            renderAlignment(parsed.qAln, parsed.tAln);
+            renderAlignment(qAln, tAln);
 
-            const quality = parsed.tmScore >= 0.5 ? 'same fold' : parsed.tmScore >= 0.3 ? 'similar topology' : 'low similarity';
+            const quality = tmScore >= 0.5 ? 'same fold' : tmScore >= 0.3 ? 'similar topology' : 'low similarity';
             statusbar.textContent =
-                `TM-score: ${parsed.tmScore.toFixed(4)} (${quality})  ·  RMSD: ${parsed.rmsd.toFixed(3)} Å  ·  ${alnLen} residues aligned`;
+                `TM-score: ${tmScore.toFixed(4)} (${quality})  ·  RMSD: ${rmsd.toFixed(3)} Å  ·  ${alnLen} residues aligned`;
 
         } catch (err) {
             statusbar.textContent = 'Error: ' + err.message;
