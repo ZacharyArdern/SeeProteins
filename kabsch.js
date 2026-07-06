@@ -200,39 +200,22 @@ export function flexibleAlignPDB(pdbA, pdbBt, hingeResidues) {
     const resToSeg = new Map();
     segments.forEach((seg, si) => seg.residues.forEach(r => resToSeg.set(r, si)));
 
-    // Near each segment boundary, blend the per-segment-aligned B position toward
-    // protein A's actual coordinate. Applied symmetrically: the first W residues of
-    // each non-first segment (entering a segment) AND the last W residues of each
-    // non-last segment (exiting a segment). At blend=1 the atom lands exactly on
-    // protein A, so both sides of every junction inherit A's valid backbone geometry.
-    const W = 5;
-    const blendDelta = new Map(); // resNum → [dx, dy, dz]
+    // Near each segment boundary, smoothly transition from segment si's rigid
+    // transform to segment si+1's rigid transform over W residues at the END of
+    // segment si. Both transforms are applied to B's own coordinates and linearly
+    // interpolated, so bond geometry within B is preserved throughout the zone.
+    // blendInfo: resNum → { si0, si1, alpha }  (alpha=1 → fully si1 transform)
+    const W = 10;
+    const blendInfo = new Map();
 
-    function addBlend(r, si, blend) {
-        const aCoord = mapA.get(r);
-        const bCoord = mapBt.get(r);
-        if (!aCoord || !bCoord) return;
-        const { R, t } = transforms[si];
-        const dx = blend * (aCoord[0] - (R[0][0]*bCoord[0]+R[0][1]*bCoord[1]+R[0][2]*bCoord[2]+t[0]));
-        const dy = blend * (aCoord[1] - (R[1][0]*bCoord[0]+R[1][1]*bCoord[1]+R[1][2]*bCoord[2]+t[1]));
-        const dz = blend * (aCoord[2] - (R[2][0]*bCoord[0]+R[2][1]*bCoord[1]+R[2][2]*bCoord[2]+t[2]));
-        const ex = blendDelta.get(r);
-        blendDelta.set(r, ex ? [ex[0]+dx, ex[1]+dy, ex[2]+dz] : [dx, dy, dz]);
-    }
-
-    // Start of each non-first segment: blend=1 at first residue, tapers to 0
-    for (let si = 1; si < segments.length; si++) {
-        const res = segments[si].residues;
-        const count = Math.min(W, Math.floor(res.length / 2));
-        for (let j = 0; j < count; j++)
-            addBlend(res[j], si, (count - j) / count);
-    }
-    // End of each non-last segment: blend=1 at last residue, tapers to 0
     for (let si = 0; si < segments.length - 1; si++) {
         const res = segments[si].residues;
         const count = Math.min(W, Math.floor(res.length / 2));
-        for (let j = 0; j < count; j++)
-            addBlend(res[res.length - 1 - j], si, (count - j) / count);
+        for (let j = 0; j < count; j++) {
+            const r = res[res.length - 1 - j];
+            const alpha = (count - j) / count; // 1.0 at last residue, tapers toward 0
+            blendInfo.set(r, { si0: si, si1: si + 1, alpha });
+        }
     }
 
     // Precompute segment extent boundaries for fallback lookup.
@@ -272,13 +255,26 @@ export function flexibleAlignPDB(pdbA, pdbBt, hingeResidues) {
         const z = parseFloat(line.substring(46, 54));
         if (isNaN(x)) { lines.push(line); continue; }
 
-        const { R, t } = transforms[si];
-        let nx = R[0][0]*x+R[0][1]*y+R[0][2]*z+t[0];
-        let ny = R[1][0]*x+R[1][1]*y+R[1][2]*z+t[1];
-        let nz = R[2][0]*x+R[2][1]*y+R[2][2]*z+t[2];
-
-        const delta = blendDelta.get(resNum);
-        if (delta) { nx += delta[0]; ny += delta[1]; nz += delta[2]; }
+        const bw = blendInfo.get(resNum);
+        let nx, ny, nz;
+        if (bw) {
+            const { R: R0, t: t0 } = transforms[bw.si0];
+            const { R: R1, t: t1 } = transforms[bw.si1];
+            const x0 = R0[0][0]*x+R0[0][1]*y+R0[0][2]*z+t0[0];
+            const y0 = R0[1][0]*x+R0[1][1]*y+R0[1][2]*z+t0[1];
+            const z0 = R0[2][0]*x+R0[2][1]*y+R0[2][2]*z+t0[2];
+            const x1 = R1[0][0]*x+R1[0][1]*y+R1[0][2]*z+t1[0];
+            const y1 = R1[1][0]*x+R1[1][1]*y+R1[1][2]*z+t1[1];
+            const z1 = R1[2][0]*x+R1[2][1]*y+R1[2][2]*z+t1[2];
+            nx = (1 - bw.alpha) * x0 + bw.alpha * x1;
+            ny = (1 - bw.alpha) * y0 + bw.alpha * y1;
+            nz = (1 - bw.alpha) * z0 + bw.alpha * z1;
+        } else {
+            const { R, t } = transforms[si];
+            nx = R[0][0]*x+R[0][1]*y+R[0][2]*z+t[0];
+            ny = R[1][0]*x+R[1][1]*y+R[1][2]*z+t[1];
+            nz = R[2][0]*x+R[2][1]*y+R[2][2]*z+t[2];
+        }
 
         lines.push(line.substring(0,30) +
             nx.toFixed(3).padStart(8) +
