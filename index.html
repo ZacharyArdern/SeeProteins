@@ -902,7 +902,14 @@
         }
     }
 
-    flexBtn.addEventListener('click', () => runFlexAlign());
+    flexBtn.addEventListener('click', async () => {
+        if (!pdbBtAligned) {
+            loading.classList.add('visible');
+            loadingMsg.textContent = 'Running alignment…';
+            try { await runRigidAlign(true); } catch { return; }
+        }
+        await runFlexAlign();
+    });
 
     // ── Preload demo proteins ─────────────────────────────────────────────────
     (async () => {
@@ -924,12 +931,14 @@
     })();
 
     // ── Rigid alignment ───────────────────────────────────────────────────────
-    async function runRigidAlign() {
+    async function runRigidAlign(silent = false) {
         const useNW = $('method-select').value !== 'tmalign';
         alignBtn.disabled = true;
-        loading.classList.add('visible');
-        loadingMsg.textContent = useNW ? 'Running sequence alignment…' : 'Running TM-align…';
-        statusbar.textContent  = useNW ? 'Running sequence alignment…' : 'Running TM-align…';
+        if (!silent) {
+            loading.classList.add('visible');
+            loadingMsg.textContent = useNW ? 'Running sequence alignment…' : 'Running TM-align…';
+            statusbar.textContent  = useNW ? 'Running sequence alignment…' : 'Running TM-align…';
+        }
         try {
             let qAln, tAln, tmScore, rmsd, alnLen, R, t;
 
@@ -948,50 +957,55 @@
                 pdbBtAligned = transformPDB(pdbB, mat.u, mat.t);
             }
 
-            $('stat-tm').textContent   = tmScore.toFixed(4);
-            $('stat-rmsd').textContent = rmsd.toFixed(3) + ' Å';
-            $('stat-aln').textContent  = alnLen;
-            $('tm-fill').style.width   = (Math.min(tmScore, 1) * 100) + '%';
-            $('leg-a').textContent = labelA;
-            $('leg-b').textContent = labelB;
-            stats.classList.add('visible');
-
             const resNumsA = parseCACoords(pdbA).map(c => c.resNum);
             const resNumsB = parseCACoords(pdbB).map(c => c.resNum);
             mutations = findMutations(qAln, tAln, resNumsA, resNumsB);
-            if (mutations.inA.length > 0) {
-                $('stat-mut').textContent = mutations.inA.length;
-                $('mut-row').style.display = '';
-                $('leg-mut-item').style.display = '';
-            } else {
-                $('mut-row').style.display = 'none';
-                $('leg-mut-item').style.display = 'none';
-            }
-
             currentSegs  = null;
-            colorMode    = 'solid';
-            colorSelect.value = 'solid';
             currentStability = null;
             currentAlignment = { qAln, tAln, tmScore, rmsd, alnLen };
 
-            $('aln-status').textContent = 'Rigid Alignment';
+            if (!silent) {
+                $('stat-tm').textContent   = tmScore.toFixed(4);
+                $('stat-rmsd').textContent = rmsd.toFixed(3) + ' Å';
+                $('stat-aln').textContent  = alnLen;
+                $('tm-fill').style.width   = (Math.min(tmScore, 1) * 100) + '%';
+                $('leg-a').textContent = labelA;
+                $('leg-b').textContent = labelB;
+                stats.classList.add('visible');
 
-            showStructures();
-            computeStability();
-            renderAlignment(qAln, tAln);
+                if (mutations.inA.length > 0) {
+                    $('stat-mut').textContent = mutations.inA.length;
+                    $('mut-row').style.display = '';
+                    $('leg-mut-item').style.display = '';
+                } else {
+                    $('mut-row').style.display = 'none';
+                    $('leg-mut-item').style.display = 'none';
+                }
 
-            const quality = tmScore >= 0.5 ? 'same fold' : tmScore >= 0.3 ? 'similar topology' : 'low similarity';
-            statusbar.textContent =
-                `TM-score: ${tmScore.toFixed(4)} (${quality})  ·  RMSD: ${rmsd.toFixed(3)} Å  ·  ${alnLen} residues aligned`;
+                colorMode    = 'solid';
+                colorSelect.value = 'solid';
+
+                $('aln-status').textContent = 'Rigid Alignment';
+
+                showStructures();
+                computeStability();
+                renderAlignment(qAln, tAln);
+
+                const quality = tmScore >= 0.5 ? 'same fold' : tmScore >= 0.3 ? 'similar topology' : 'low similarity';
+                statusbar.textContent =
+                    `TM-score: ${tmScore.toFixed(4)} (${quality})  ·  RMSD: ${rmsd.toFixed(3)} Å  ·  ${alnLen} residues aligned`;
+            }
 
         } catch (err) {
-            statusbar.textContent = 'Error: ' + err.message;
+            if (!silent) statusbar.textContent = 'Error: ' + err.message;
             console.error(err);
+            throw err;
         } finally {
-            loading.classList.remove('visible');
+            if (!silent) loading.classList.remove('visible');
             alignBtn.disabled = false;
+            flexBtn.disabled = false;
             $('save-session-btn').disabled = false;
-            syncActiveSession();
+            if (!silent) syncActiveSession();
         }
     }
 
