@@ -200,6 +200,28 @@ export function flexibleAlignPDB(pdbA, pdbBt, hingeResidues) {
             blendInfo.set(res[j], { prevSi: si - 1, blend: (count - j) / count });
     }
 
+    // Precompute segment extent boundaries for fallback lookup.
+    // Residues not in any segment (indels, terminal overhangs) are assigned to
+    // the nearest segment so they move with their neighbours instead of staying
+    // at rigid-alignment coordinates and causing visual breaks.
+    const segExtents = segments.map((seg, si) => ({
+        lo: seg.residues[0],
+        hi: seg.residues[seg.residues.length - 1],
+        si,
+    }));
+    function fallbackSi(resNum) {
+        if (segExtents.length === 0) return undefined;
+        if (resNum <= segExtents[0].lo) return segExtents[0].si;
+        if (resNum >= segExtents[segExtents.length - 1].hi)
+            return segExtents[segExtents.length - 1].si;
+        for (let k = 0; k < segExtents.length - 1; k++) {
+            if (resNum > segExtents[k].hi && resNum < segExtents[k + 1].lo)
+                return (resNum - segExtents[k].hi) <= (segExtents[k + 1].lo - resNum)
+                    ? segExtents[k].si : segExtents[k + 1].si;
+        }
+        return undefined;
+    }
+
     // Transform all atoms in pdbBt
     const lines = [];
     for (const line of pdbBt.split('\n')) {
@@ -208,7 +230,7 @@ export function flexibleAlignPDB(pdbA, pdbBt, hingeResidues) {
             continue;
         }
         const resNum = parseInt(line.substring(22, 26));
-        const si = resToSeg.get(resNum);
+        const si = resToSeg.get(resNum) ?? fallbackSi(resNum);
         if (si === undefined) { lines.push(line); continue; }
         const x = parseFloat(line.substring(30, 38));
         const y = parseFloat(line.substring(38, 46));
