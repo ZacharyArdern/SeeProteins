@@ -27,6 +27,7 @@
         }
         header h1 { font-size: 1.15rem; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
         header h1 span { color: #7c6fff; }
+        #ver { font-size: 0.6rem; font-weight: 400; color: #555; letter-spacing: 0; vertical-align: middle; }
         .loading { display: none; align-items: center; gap: 8px; color: #7c6fff; font-size: 0.8rem; }
         .loading.visible { display: flex; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -281,7 +282,7 @@
 <body>
 
 <header>
-    <h1>See<span>Proteins</span></h1>
+    <h1>See<span>Proteins</span> <span id="ver"></span></h1>
     <div class="loading" id="loading">
         <div class="spinner"></div>
         <span id="loading-msg">Running TM-align…</span>
@@ -533,6 +534,7 @@
     const MUT_COLOR  = '#f5e642';
 
     const $ = id => document.getElementById(id);
+    $('ver').textContent = 'version: ' + __GIT_COMMIT__;
     const alignBtn    = $('align-btn');
     const flexBtn     = $('flex-btn');
     const loading     = $('loading');

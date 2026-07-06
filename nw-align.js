@@ -38,28 +38,30 @@ function extractCACoords(pdbText) {
     return coords;
 }
 
+// 0 = diagonal (match/mismatch), 1 = up (gap in B), 2 = left (gap in A)
 function nw(seqA, seqB, match = 2, mismatch = -1, gap = -2) {
     const m = seqA.length, n = seqB.length;
-    const dp = Array.from({ length: m + 1 }, () => new Float32Array(n + 1));
-    for (let i = 0; i <= m; i++) dp[i][0] = i * gap;
-    for (let j = 0; j <= n; j++) dp[0][j] = j * gap;
-    for (let i = 1; i <= m; i++)
-        for (let j = 1; j <= n; j++)
-            dp[i][j] = Math.max(
-                dp[i-1][j-1] + (seqA[i-1] === seqB[j-1] ? match : mismatch),
-                dp[i-1][j] + gap,
-                dp[i][j-1] + gap,
-            );
+    const dp = Array.from({ length: m + 1 }, () => new Int16Array(n + 1));
+    const tb = Array.from({ length: m + 1 }, () => new Uint8Array(n + 1));
+    for (let i = 0; i <= m; i++) { dp[i][0] = i * gap; tb[i][0] = 1; }
+    for (let j = 0; j <= n; j++) { dp[0][j] = j * gap; tb[0][j] = 2; }
+    tb[0][0] = 0;
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            const diag = dp[i-1][j-1] + (seqA[i-1] === seqB[j-1] ? match : mismatch);
+            const up   = dp[i-1][j] + gap;
+            const left = dp[i][j-1] + gap;
+            if (diag >= up && diag >= left) { dp[i][j] = diag; tb[i][j] = 0; }
+            else if (up >= left)            { dp[i][j] = up;   tb[i][j] = 1; }
+            else                            { dp[i][j] = left;  tb[i][j] = 2; }
+        }
+    }
     let qAln = '', tAln = '', i = m, j = n;
     while (i > 0 || j > 0) {
-        if (i > 0 && j > 0 &&
-            dp[i][j] === dp[i-1][j-1] + (seqA[i-1] === seqB[j-1] ? match : mismatch)) {
-            qAln = seqA[i-1] + qAln; tAln = seqB[j-1] + tAln; i--; j--;
-        } else if (i > 0 && dp[i][j] === dp[i-1][j] + gap) {
-            qAln = seqA[i-1] + qAln; tAln = '-' + tAln; i--;
-        } else {
-            qAln = '-' + qAln; tAln = seqB[j-1] + tAln; j--;
-        }
+        const d = tb[i][j];
+        if (d === 0) { qAln = seqA[i-1] + qAln; tAln = seqB[j-1] + tAln; i--; j--; }
+        else if (d === 1) { qAln = seqA[i-1] + qAln; tAln = '-' + tAln; i--; }
+        else              { qAln = '-' + qAln; tAln = seqB[j-1] + tAln; j--; }
     }
     return { qAln, tAln };
 }
