@@ -34,6 +34,33 @@ function mv3(M, v) {
     ];
 }
 
+// SLERP between two rigid transforms (R0,t0) → (R1,t1) at fraction alpha.
+// Uses Rodrigues' formula on the relative rotation so the blended transform
+// is always a proper rigid body motion — bond distances are exactly preserved.
+function slerpTransform(R0, t0, R1, t1, alpha) {
+    const dR = mmul(R1, mtr(R0));
+    const cosT = Math.max(-1, Math.min(1, (dR[0][0]+dR[1][1]+dR[2][2]-1)/2));
+    const theta = Math.acos(cosT);
+    let Ra;
+    if (theta < 1e-6) {
+        Ra = eye3();
+    } else {
+        const s = 1/(2*Math.sin(theta));
+        // Skew-symmetric K from (dR - dR^T)/2sin(θ)
+        const K = [
+            [0,                     (dR[0][1]-dR[1][0])*s, (dR[0][2]-dR[2][0])*s],
+            [(dR[1][0]-dR[0][1])*s, 0,                     (dR[1][2]-dR[2][1])*s],
+            [(dR[2][0]-dR[0][2])*s, (dR[2][1]-dR[1][2])*s, 0                    ],
+        ];
+        const at = alpha*theta, K2 = mmul(K,K), sinAt = Math.sin(at), omcAt = 1-Math.cos(at);
+        Ra = eye3();
+        for(let i=0;i<3;i++) for(let j=0;j<3;j++) Ra[i][j] += sinAt*K[i][j] + omcAt*K2[i][j];
+    }
+    const R = mmul(Ra, R0);
+    const t = t0.map((v,i) => (1-alpha)*v + alpha*t1[i]);
+    return { R, t };
+}
+
 // ── Jacobi eigenvalue for 3×3 symmetric matrix ─────────────────────────────────
 // Returns {vals, vecs} where vecs[k] is the k-th eigenvector.
 
@@ -174,11 +201,12 @@ export function flexibleAlignPDB(pdbA, pdbBt, hingeResidues) {
 
     const common = [...mapA.keys()].filter(r => mapBt.has(r)).sort((a,b) => a-b);
 
-    // Filter hinges: each segment must have at least MIN_SEG common residues,
-    // and total hinges are capped at MAX_HINGES to avoid over-segmentation
-    // from disordered termini or noisy BICExact output.
+    // Filter hinges: each segment must have at least MIN_SEG common residues.
+    // MAX_HINGES scales with protein length (~1 hinge per 300 residues), allowing
+    // large multi-domain proteins to have more segments while keeping small proteins
+    // from over-segmenting on noisy BICExact output.
     const MIN_SEG = 30;
-    const MAX_HINGES = 4;
+    const MAX_HINGES = Math.max(2, Math.min(15, Math.round(common.length / 300)));
     const filteredHinges = [];
     let prev = common[0];
     for (const h of [...hingeResidues].sort((a, b) => a - b)) {
@@ -200,20 +228,27 @@ export function flexibleAlignPDB(pdbA, pdbBt, hingeResidues) {
     const resToSeg = new Map();
     segments.forEach((seg, si) => seg.residues.forEach(r => resToSeg.set(r, si)));
 
-    // Near each segment boundary, smoothly transition from segment si's rigid
-    // transform to segment si+1's rigid transform over W residues at the END of
-    // segment si. Both transforms are applied to B's own coordinates and linearly
-    // interpolated, so bond geometry within B is preserved throughout the zone.
-    // blendInfo: resNum → { si0, si1, alpha }  (alpha=1 → fully si1 transform)
+    // Near each segment boundary, SLERP from segment si's transform to si+1's
+    // over W residues. Only applied when the inter-segment rotation angle is
+    // small (<45°) — for large domain motions the gap IS the signal, and
+    // blending would create worse artefacts than a clean cut.
     const W = 10;
+    const BLEND_ANGLE_MAX = Math.PI / 4; // 45°
     const blendInfo = new Map();
 
     for (let si = 0; si < segments.length - 1; si++) {
+        const { R: R0 } = transforms[si], { R: R1 } = transforms[si + 1];
+        // Rotation angle of dR = R1 @ R0^T
+        let trDR = 0;
+        for (let i = 0; i < 3; i++) for (let k = 0; k < 3; k++) trDR += R1[i][k] * R0[i][k];
+        const theta = Math.acos(Math.max(-1, Math.min(1, (trDR - 1) / 2)));
+        if (theta >= BLEND_ANGLE_MAX) continue; // large domain motion: clean cut
+
         const res = segments[si].residues;
         const count = Math.min(W, Math.floor(res.length / 2));
         for (let j = 0; j < count; j++) {
             const r = res[res.length - 1 - j];
-            const alpha = (count - j) / count; // 1.0 at last residue, tapers toward 0
+            const alpha = (count - j) / count;
             blendInfo.set(r, { si0: si, si1: si + 1, alpha });
         }
     }
@@ -258,17 +293,13 @@ export function flexibleAlignPDB(pdbA, pdbBt, hingeResidues) {
         const bw = blendInfo.get(resNum);
         let nx, ny, nz;
         if (bw) {
-            const { R: R0, t: t0 } = transforms[bw.si0];
-            const { R: R1, t: t1 } = transforms[bw.si1];
-            const x0 = R0[0][0]*x+R0[0][1]*y+R0[0][2]*z+t0[0];
-            const y0 = R0[1][0]*x+R0[1][1]*y+R0[1][2]*z+t0[1];
-            const z0 = R0[2][0]*x+R0[2][1]*y+R0[2][2]*z+t0[2];
-            const x1 = R1[0][0]*x+R1[0][1]*y+R1[0][2]*z+t1[0];
-            const y1 = R1[1][0]*x+R1[1][1]*y+R1[1][2]*z+t1[1];
-            const z1 = R1[2][0]*x+R1[2][1]*y+R1[2][2]*z+t1[2];
-            nx = (1 - bw.alpha) * x0 + bw.alpha * x1;
-            ny = (1 - bw.alpha) * y0 + bw.alpha * y1;
-            nz = (1 - bw.alpha) * z0 + bw.alpha * z1;
+            const { R: Rs, t: ts } = slerpTransform(
+                transforms[bw.si0].R, transforms[bw.si0].t,
+                transforms[bw.si1].R, transforms[bw.si1].t,
+                bw.alpha);
+            nx = Rs[0][0]*x+Rs[0][1]*y+Rs[0][2]*z+ts[0];
+            ny = Rs[1][0]*x+Rs[1][1]*y+Rs[1][2]*z+ts[1];
+            nz = Rs[2][0]*x+Rs[2][1]*y+Rs[2][2]*z+ts[2];
         } else {
             const { R, t } = transforms[si];
             nx = R[0][0]*x+R[0][1]*y+R[0][2]*z+t[0];
