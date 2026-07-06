@@ -174,15 +174,15 @@ export function flexibleAlignPDB(pdbA, pdbBt, hingeResidues) {
 
     const common = [...mapA.keys()].filter(r => mapBt.has(r)).sort((a,b) => a-b);
 
-    // Filter hinges to ensure no segment is shorter than MIN_SEG residues.
-    // BICExact can place hinges on both sides of a short loop, making it its
-    // own micro-segment that causes visual breaks. Greedy scan: accept a hinge
-    // only if it leaves at least MIN_SEG common residues in the current segment
-    // AND at least MIN_SEG common residues in the remainder.
-    const MIN_SEG = 15;
+    // Filter hinges: each segment must have at least MIN_SEG common residues,
+    // and total hinges are capped at MAX_HINGES to avoid over-segmentation
+    // from disordered termini or noisy BICExact output.
+    const MIN_SEG = 30;
+    const MAX_HINGES = 4;
     const filteredHinges = [];
     let prev = common[0];
     for (const h of [...hingeResidues].sort((a, b) => a - b)) {
+        if (filteredHinges.length >= MAX_HINGES) break;
         const segLen   = common.filter(r => r >= prev && r < h).length;
         const remLen   = common.filter(r => r >= h).length;
         if (segLen >= MIN_SEG && remLen >= MIN_SEG) { filteredHinges.push(h); prev = h; }
