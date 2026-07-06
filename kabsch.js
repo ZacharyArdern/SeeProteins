@@ -173,7 +173,21 @@ export function flexibleAlignPDB(pdbA, pdbBt, hingeResidues) {
     const mapBt = new Map(caBt.map(c => [c.resNum, c.xyz]));
 
     const common = [...mapA.keys()].filter(r => mapBt.has(r)).sort((a,b) => a-b);
-    const segments = defineSegments(common, hingeResidues);
+
+    // Filter hinges to ensure no segment is shorter than MIN_SEG residues.
+    // BICExact can place hinges on both sides of a short loop, making it its
+    // own micro-segment that causes visual breaks. Greedy scan: accept a hinge
+    // only if it leaves at least MIN_SEG common residues in the current segment
+    // AND at least MIN_SEG common residues in the remainder.
+    const MIN_SEG = 15;
+    const filteredHinges = [];
+    let prev = common[0];
+    for (const h of [...hingeResidues].sort((a, b) => a - b)) {
+        const segLen   = common.filter(r => r >= prev && r < h).length;
+        const remLen   = common.filter(r => r >= h).length;
+        if (segLen >= MIN_SEG && remLen >= MIN_SEG) { filteredHinges.push(h); prev = h; }
+    }
+    const segments = defineSegments(common, filteredHinges);
 
     // Per-segment Kabsch: rotate pdbBt segment onto pdbA
     const transforms = segments.map(seg => {
