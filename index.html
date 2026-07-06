@@ -529,7 +529,7 @@
     function isCIF(filename) { return /\.(cif|mmcif)$/i.test(filename); }
 
     // ── State ──────────────────────────────────────────────────────────────────
-    let pdbA = null, pdbB = null, pdbBtAligned = null;
+    let pdbA = null, pdbB = null, pdbBtAligned = null, pdbBtRigid = null;
     let labelA = 'Protein A', labelB = 'Protein B';
     let viewerA = null, viewerB = null, viewerOverlay = null;
     let viewerBg = 'dark';
@@ -757,6 +757,7 @@
     function checkReady() {
         const ready = !!(pdbA && pdbB);
         alignBtn.disabled = !ready;
+        flexBtn.disabled  = !ready;
         if (ready) {
             const s = $('aln-status');
             s.textContent = 'Unaligned';
@@ -862,8 +863,8 @@
         loadingMsg.textContent = 'Running BICExact…';
         statusbar.textContent = 'Running BICExact flexible alignment…';
         try {
-            const bicResult = await runBICExact(pdbA, pdbBtAligned);
-            const { pdb: pdbFlex, segments, rmsdh } = flexibleAlignPDB(pdbA, pdbBtAligned, bicResult.hingeResidues);
+            const bicResult = await runBICExact(pdbA, pdbBtRigid);
+            const { pdb: pdbFlex, segments, rmsdh } = flexibleAlignPDB(pdbA, pdbBtRigid, bicResult.hingeResidues);
 
             currentSegs  = segments;
             pdbBtAligned = pdbFlex;
@@ -903,7 +904,7 @@
     }
 
     flexBtn.addEventListener('click', async () => {
-        if (!pdbBtAligned) {
+        if (!pdbBtRigid) {
             loading.classList.add('visible');
             loadingMsg.textContent = 'Running alignment…';
             try { await runRigidAlign(true); } catch { return; }
@@ -956,6 +957,7 @@
                 alnLen  = parsed.qAln.replace(/-/g, '').length;
                 pdbBtAligned = transformPDB(pdbB, mat.u, mat.t);
             }
+            pdbBtRigid = pdbBtAligned;
 
             const resNumsA = parseCACoords(pdbA).map(c => c.resNum);
             const resNumsB = parseCACoords(pdbB).map(c => c.resNum);
@@ -1017,7 +1019,7 @@
             version:   1,
             labelA, labelB,
             pdbA, pdbB,
-            pdbBtAligned,
+            pdbBtAligned, pdbBtRigid,
             currentSegs,
             alignment:  currentAlignment  ? { ...currentAlignment }  : null,
             mutations:  mutations         ? JSON.parse(JSON.stringify(mutations)) : null,
@@ -1029,6 +1031,7 @@
         pdbA         = s.pdbA;
         pdbB         = s.pdbB;
         pdbBtAligned = s.pdbBtAligned;
+        pdbBtRigid   = s.pdbBtRigid ?? s.pdbBtAligned;
         labelA       = s.labelA;
         labelB       = s.labelB;
         currentSegs  = s.currentSegs  ?? null;
