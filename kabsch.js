@@ -186,18 +186,30 @@ export function flexibleAlignPDB(pdbA, pdbBt, hingeResidues) {
     const resToSeg = new Map();
     segments.forEach((seg, si) => seg.residues.forEach(r => resToSeg.set(r, si)));
 
-    // For the first W residues of each non-first segment, blend from the previous
-    // segment's transform toward the current one. At j=0 (first residue of segment),
-    // blend=1 → pure previous transform, guaranteeing peptide-bond continuity with
-    // the preceding segment. Blend tapers to 0 by j=W, restoring the correct
-    // per-segment superposition for the rest of the segment.
+    // Near each segment boundary, blend the per-segment-aligned B position toward
+    // protein A's actual coordinate. At blend=1 (first residue of segment) the atom
+    // lands exactly on protein A → the junction bond inherits A's valid geometry.
+    // For similar proteins T_si(B) ≈ A throughout the zone, so intermediate bonds
+    // also stay near 3.8 Å. The same correction vector is applied to every atom of
+    // the residue so local geometry is preserved.
     const W = 5;
-    const blendInfo = new Map(); // resNum → { prevSi, blend }
+    const blendDelta = new Map(); // resNum → [dx, dy, dz]
     for (let si = 1; si < segments.length; si++) {
         const res = segments[si].residues;
         const count = Math.min(W, Math.floor(res.length / 2));
-        for (let j = 0; j < count; j++)
-            blendInfo.set(res[j], { prevSi: si - 1, blend: (count - j) / count });
+        for (let j = 0; j < count; j++) {
+            const r = res[j];
+            const aCoord = mapA.get(r);
+            const bCoord = mapBt.get(r);
+            if (!aCoord || !bCoord) continue;
+            const { R, t } = transforms[si];
+            const blend = (count - j) / count;
+            blendDelta.set(r, [
+                blend * (aCoord[0] - (R[0][0]*bCoord[0]+R[0][1]*bCoord[1]+R[0][2]*bCoord[2]+t[0])),
+                blend * (aCoord[1] - (R[1][0]*bCoord[0]+R[1][1]*bCoord[1]+R[1][2]*bCoord[2]+t[1])),
+                blend * (aCoord[2] - (R[2][0]*bCoord[0]+R[2][1]*bCoord[1]+R[2][2]*bCoord[2]+t[2])),
+            ]);
+        }
     }
 
     // Precompute segment extent boundaries for fallback lookup.
@@ -242,16 +254,8 @@ export function flexibleAlignPDB(pdbA, pdbBt, hingeResidues) {
         let ny = R[1][0]*x+R[1][1]*y+R[1][2]*z+t[1];
         let nz = R[2][0]*x+R[2][1]*y+R[2][2]*z+t[2];
 
-        const b = blendInfo.get(resNum);
-        if (b) {
-            const { R: pR, t: pt } = transforms[b.prevSi];
-            const px = pR[0][0]*x+pR[0][1]*y+pR[0][2]*z+pt[0];
-            const py = pR[1][0]*x+pR[1][1]*y+pR[1][2]*z+pt[1];
-            const pz = pR[2][0]*x+pR[2][1]*y+pR[2][2]*z+pt[2];
-            nx = b.blend * px + (1 - b.blend) * nx;
-            ny = b.blend * py + (1 - b.blend) * ny;
-            nz = b.blend * pz + (1 - b.blend) * nz;
-        }
+        const delta = blendDelta.get(resNum);
+        if (delta) { nx += delta[0]; ny += delta[1]; nz += delta[2]; }
 
         lines.push(line.substring(0,30) +
             nx.toFixed(3).padStart(8) +
