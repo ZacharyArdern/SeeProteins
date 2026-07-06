@@ -886,6 +886,28 @@
 
             $('aln-status').textContent = 'Flexible Alignment';
 
+            // Populate stats panel and run stability/alignment if rigid ran silently
+            if (currentAlignment && !stats.classList.contains('visible')) {
+                const { qAln, tAln, tmScore, rmsd: rigidRmsd, alnLen } = currentAlignment;
+                $('stat-tm').textContent   = tmScore.toFixed(4);
+                $('stat-rmsd').textContent = rigidRmsd.toFixed(3) + ' Å';
+                $('stat-aln').textContent  = alnLen;
+                $('tm-fill').style.width   = (Math.min(tmScore, 1) * 100) + '%';
+                $('leg-a').textContent = labelA;
+                $('leg-b').textContent = labelB;
+                stats.classList.add('visible');
+                if (mutations?.inA?.length > 0) {
+                    $('stat-mut').textContent = mutations.inA.length;
+                    $('mut-row').style.display = '';
+                    $('leg-mut-item').style.display = '';
+                } else {
+                    $('mut-row').style.display = 'none';
+                    $('leg-mut-item').style.display = 'none';
+                }
+                renderAlignment(qAln, tAln);
+                computeStability();
+            }
+
             showStructures();
             const impr = bicResult.rmsd && rmsdh ? ((1 - rmsdh / bicResult.rmsd) * 100).toFixed(0) : '?';
             statusbar.textContent =
