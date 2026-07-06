@@ -201,29 +201,38 @@ export function flexibleAlignPDB(pdbA, pdbBt, hingeResidues) {
     segments.forEach((seg, si) => seg.residues.forEach(r => resToSeg.set(r, si)));
 
     // Near each segment boundary, blend the per-segment-aligned B position toward
-    // protein A's actual coordinate. At blend=1 (first residue of segment) the atom
-    // lands exactly on protein A → the junction bond inherits A's valid geometry.
-    // For similar proteins T_si(B) ≈ A throughout the zone, so intermediate bonds
-    // also stay near 3.8 Å. The same correction vector is applied to every atom of
-    // the residue so local geometry is preserved.
+    // protein A's actual coordinate. Applied symmetrically: the first W residues of
+    // each non-first segment (entering a segment) AND the last W residues of each
+    // non-last segment (exiting a segment). At blend=1 the atom lands exactly on
+    // protein A, so both sides of every junction inherit A's valid backbone geometry.
     const W = 5;
     const blendDelta = new Map(); // resNum → [dx, dy, dz]
+
+    function addBlend(r, si, blend) {
+        const aCoord = mapA.get(r);
+        const bCoord = mapBt.get(r);
+        if (!aCoord || !bCoord) return;
+        const { R, t } = transforms[si];
+        const dx = blend * (aCoord[0] - (R[0][0]*bCoord[0]+R[0][1]*bCoord[1]+R[0][2]*bCoord[2]+t[0]));
+        const dy = blend * (aCoord[1] - (R[1][0]*bCoord[0]+R[1][1]*bCoord[1]+R[1][2]*bCoord[2]+t[1]));
+        const dz = blend * (aCoord[2] - (R[2][0]*bCoord[0]+R[2][1]*bCoord[1]+R[2][2]*bCoord[2]+t[2]));
+        const ex = blendDelta.get(r);
+        blendDelta.set(r, ex ? [ex[0]+dx, ex[1]+dy, ex[2]+dz] : [dx, dy, dz]);
+    }
+
+    // Start of each non-first segment: blend=1 at first residue, tapers to 0
     for (let si = 1; si < segments.length; si++) {
         const res = segments[si].residues;
         const count = Math.min(W, Math.floor(res.length / 2));
-        for (let j = 0; j < count; j++) {
-            const r = res[j];
-            const aCoord = mapA.get(r);
-            const bCoord = mapBt.get(r);
-            if (!aCoord || !bCoord) continue;
-            const { R, t } = transforms[si];
-            const blend = (count - j) / count;
-            blendDelta.set(r, [
-                blend * (aCoord[0] - (R[0][0]*bCoord[0]+R[0][1]*bCoord[1]+R[0][2]*bCoord[2]+t[0])),
-                blend * (aCoord[1] - (R[1][0]*bCoord[0]+R[1][1]*bCoord[1]+R[1][2]*bCoord[2]+t[1])),
-                blend * (aCoord[2] - (R[2][0]*bCoord[0]+R[2][1]*bCoord[1]+R[2][2]*bCoord[2]+t[2])),
-            ]);
-        }
+        for (let j = 0; j < count; j++)
+            addBlend(res[j], si, (count - j) / count);
+    }
+    // End of each non-last segment: blend=1 at last residue, tapers to 0
+    for (let si = 0; si < segments.length - 1; si++) {
+        const res = segments[si].residues;
+        const count = Math.min(W, Math.floor(res.length / 2));
+        for (let j = 0; j < count; j++)
+            addBlend(res[res.length - 1 - j], si, (count - j) / count);
     }
 
     // Precompute segment extent boundaries for fallback lookup.

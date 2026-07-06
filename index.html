@@ -217,6 +217,21 @@
         .empty-overlay svg { width: 56px; opacity: 0.4; }
         .empty-overlay p { font-size: 0.78rem; }
 
+        #aln-status {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: rgba(255,255,255,0.13);
+            letter-spacing: 0.05em;
+            pointer-events: none;
+            z-index: 5;
+            text-transform: uppercase;
+        }
+
         /* ── Sequence alignment panel ── */
         .aln-panel {
             height: 95px;
@@ -424,6 +439,7 @@
                 <div class="panel-hint">click · ↑↓←→ to rotate</div>
                 <div class="panel-inner" id="viewer-overlay"></div>
                 <button class="export-btn" id="export-overlay">↓ PNG</button>
+                <div id="aln-status"></div>
                 <div class="empty-overlay" id="empty-overlay">
                     <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <circle cx="30" cy="30" r="12" stroke="currentColor" stroke-width="4"/>
@@ -741,8 +757,11 @@
     function checkReady() {
         const ready = !!(pdbA && pdbB);
         alignBtn.disabled = !ready;
-        if (ready) setTimeout(() => runRigidAlign().then(runFlexAlign), 0);
-        // flexBtn enabled only after rigid align runs (needs pdbBtAligned)
+        if (ready) {
+            const s = $('aln-status');
+            s.textContent = 'Unaligned';
+            s.style.display = 'block';
+        }
     }
 
     // ── Mutation detection ────────────────────────────────────────────────────
@@ -864,6 +883,8 @@
                 legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${c}"></div><span style="font-size:0.65rem">Seg ${si+1}: ${seg.minRes}–${seg.maxRes}</span></div>`;
             });
 
+            $('aln-status').textContent = 'Flexible Alignment';
+
             showStructures();
             const impr = bicResult.rmsd && rmsdh ? ((1 - rmsdh / bicResult.rmsd) * 100).toFixed(0) : '?';
             statusbar.textContent =
@@ -952,6 +973,8 @@
             colorSelect.value = 'solid';
             currentStability = null;
             currentAlignment = { qAln, tAln, tmScore, rmsd, alnLen };
+
+            $('aln-status').textContent = 'Rigid Alignment';
 
             showStructures();
             computeStability();
